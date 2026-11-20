@@ -28,7 +28,9 @@ The rest is set up by the program on the first start, each step after asking you
   OBS has to be closed for a moment; the program waits for that, changes the setting and keeps the previous one in
   `config.before-screen-translator.json` in the same folder.
 - If [Ollama](https://ollama.com/), which runs the translation model, is missing, the program offers to download it from
-  ollama.com (1.9 GB) and install it. The downloaded installer is run only if it carries Ollama's signature.
+  ollama.com (1.9 GB) and install it. The downloaded installer is run only if it carries Ollama's signature. After its
+  installation Ollama opens a window of its own with commands for a terminal; the translator does not need them, see
+  [Ollama](#ollama).
 - The translation model (8.1 GB) is downloaded once.
 
 You can do the first two by hand instead: *Tools > WebSocket Server Settings > Enable WebSocket server* in OBS, and the
@@ -42,22 +44,31 @@ If you would rather not run an unsigned installer, run the program from source (
 1. Start OBS and *OBS Screen Translator* from the Start menu, in any order. The program waits for OBS.
 2. Check the languages in **Translate from** and **Translate to**. The target language starts as the language of your
    Windows.
-3. Check **Game source in OBS**. If the scene that is on air has exactly one capture card, it is chosen for you; the same
+3. Check **Source in OBS** under *Game*. If the scene that is on air has exactly one capture card, it is chosen for you; the same
    goes for a single game capture, window capture or display capture. Otherwise pick the game from the list. *Refresh*
    reads the list of sources from OBS again.
-4. Optional: **Area to read**. *Choose...* shows the current picture of the game; drag a rectangle around each part you
+4. Optional: **Areas to read**. *Choose...* shows the current picture of the game; drag a rectangle around each part you
    want translated, for example the subtitles and the phone. You can draw several. Text outside the rectangles is
-   ignored. *Remove last* and *Remove all* take rectangles away; with no rectangle the whole picture is read. *Use*
-   confirms.
-5. Optional: **Background opacity**. The slider sets how dark the background behind the translations is, from none
-   (0 %) to solid black (100 %). Translations that are on screen change while you drag it.
+   ignored. *Remove last* and *Remove all* take rectangles away; with no rectangle the whole picture is read. A
+   translation is drawn over its original text unless you give it another place: choose *Draw where area [number] is
+   shown* and drag the place (blue, with an arrow from the area). The translation is moved there and scaled to it. *Show
+   it where it is read* undoes that. *Use* confirms.
+5. Optional: **Look** → *Edit...* opens *Look of translations*: font, size (the size of the original text or a fixed size), bold,
+   italic, text colour, background colour and opacity, outline and alignment. *Settings for* chooses whether you change
+   the default look, which every area uses, or the look of one area; an area can keep the default look or get its own.
+   Changes apply at once, and while the editor is open OBS shows a sample translation with the look you are editing.
+   **Shown in OBS source** sends the translations of an area to another browser source: *New source...* adds one to OBS,
+   *Remove source* removes it from OBS again and moves its areas back to the first source. Each source can be placed,
+   cropped, filtered and shown or hidden in OBS on its own, for example the subtitles in every scene and the phone only in
+   some.
 6. Optional: **Show/hide key**. Press *Set...* and then a function key (F1 to F24) or a combination with Ctrl or Alt.
    That key shows and hides the translations whatever window is in front, also when a Stream Deck sends it.
 7. Press **Start**. With **Start translating when this program opens** ticked, the program does that for you next time.
 
-On the first start the program adds a browser source named *Translation overlay* to the scene that is on air.
+On the first start the program adds a browser source named *Translation overlay* to the scene that is on air. Sources
+added with *New source...* are created the same way when translation starts or restarts.
 
-The **Help** menu has a short guide (*Installation and setup*), *Details* with the version, the license and the place of the
+The **Help** button at the top right has a short guide (*Installation and setup*), the changes of the installed version (*What's new in <version>*), *Details* with the version, the license and the place of the
 settings and stored translations, *Open the settings folder* and a link to this project. The window lists every translated text with the time it took.
 
 To change the language, pick another one in the window. Translation restarts in the new language by itself; you do not have
@@ -67,12 +78,43 @@ way.
 Smaller areas mean less to read and less to translate, and no translations drawn over parts of the picture you do not
 care about. They help most on screens full of text; see *Measured*.
 
-The program works only while the overlay source is visible in the scene that is on air. Hide the source and the program
-stops reading and translating until you show it again. The show/hide key does exactly that, in every scene that contains
-the overlay source. The overlay source has to sit directly in the scene, not inside a nested scene.
+An area is read only while the source that shows its translations is visible in the scene that is on air. Hide a source
+and its areas are neither read nor translated; with every translation source hidden the program waits until you show one
+again. The show/hide key shows and hides all translation sources together, in every scene that contains them. A
+translation source has to sit directly in the scene, not inside a nested scene.
 
 Closing the window removes the translations from the picture and unloads the translation model from the graphics card at
 once. While the program runs, Ollama keeps the model loaded between translations.
+
+## Ollama
+
+[Ollama](https://ollama.com/) is a free program that runs the translation model on your PC. The translator sends it the
+text to translate; nothing leaves your computer.
+
+- You do not have to start Ollama or type anything in a terminal. When you press **Start**, the program starts Ollama in
+  the background if it is not running and downloads the model if it is missing (8.1 GB; the window shows the progress).
+  It says *translation model ready* when it can translate.
+- After its installation Ollama opens a window of its own, *Launch*, with the line "Copy a command and run it in your
+  terminal" and commands such as `ollama launch claude`. Those start AI coding tools and have nothing to do with the
+  translator: close the window. Ollama keeps running in the background.
+- Installing it by hand: run `OllamaSetup.exe` from [ollama.com/download](https://ollama.com/download). It installs for
+  the current user, without administrator rights, and needs no account.
+- Is it running? <http://127.0.0.1:11434> in a browser says *Ollama is running*. `ollama list` in Command Prompt lists the
+  downloaded models.
+- To download the model before a stream, press **Start** once and wait for *translation model ready*, or run
+  `ollama pull translategemma:12b` in Command Prompt.
+- With less than about 8 GB of free graphics memory, use the smaller model, which translates noticeably worse: set
+  `"model": "translategemma:4b"` in `settings.json` (*Help > Open the settings folder*; 3.3 GB, about 2.7 GB of graphics
+  memory) and start the program again.
+- Ollama keeps the models in `%USERPROFILE%\.ollama\models`. To keep them elsewhere, change *Model location* in Ollama's
+  settings (open Ollama from the Start menu) or set the environment variable `OLLAMA_MODELS`, best before the model is
+  downloaded.
+- Ollama on another PC: there, turn on *Expose Ollama to the network* in Ollama's settings (or set `OLLAMA_HOST=0.0.0.0`)
+  and allow Ollama through the Windows firewall; here, set `ollama_url` in `settings.json` to `http://<that PC>:11434`.
+  Every translation then goes through Ollama and takes about a third of a second longer, because the direct connection to
+  the model works only on the same PC.
+- *Ollama did not start*: open Ollama from the Start menu, wait for its icon next to the clock and press **Start** again.
+- A download of the model that stopped continues where it stopped when you press **Start** again.
 
 ## How it works
 
@@ -81,7 +123,10 @@ once. While the program runs, Ollama keeps the model loaded between translations
    the graphics card through DirectML, which works on any DirectX 12 card, or on the processor.
 3. Lines that belong together (a two-line subtitle, a paragraph of a message) are joined into one block.
 4. A block is translated by [TranslateGemma](https://ollama.com/library/translategemma) served by Ollama. Sentences go one
-   at a time as soon as they appear; short labels such as menu items go in batches of up to 12.
+   at a time as soon as they appear; short labels such as menu items go in batches of up to 12. Ollama spends about 0.35 s
+   on every request before the model starts working, so the program sends the text straight to the llama-server that
+   Ollama starts for the model, with the same template and settings. It checks first that a test sentence comes back
+   exactly as through Ollama and falls back to Ollama whenever that fails.
 5. A browser source in OBS (`overlay.html`) receives the translations over a local WebSocket and draws each one at the place
    of the text it replaces.
 
@@ -112,8 +157,8 @@ correctly yet, whatever language you choose.
 
 ## Settings
 
-The window covers the languages, the game source, the areas to read, the background opacity, the show/hide key and the
-automatic start. Everything else is in `settings.json`, created on the first start in
+The window covers the languages, the game source, the areas to read and where they are shown, the look of translations
+and the OBS sources they go to, the show/hide key and the automatic start. Everything else is in `settings.json`, created on the first start in
 `%APPDATA%\OBS Screen Translator` (next to `translator.py` when you run from source). Changes apply after a restart of the
 program.
 
@@ -121,13 +166,13 @@ program.
 |---|---|---|
 | `obs_source` | empty | Name of the OBS source to read. Set in the window. |
 | `source_language`, `target_language` | `en`, `sk` | Language codes. Set in the window. |
-| `regions` | `[]` | Parts of the picture that are read, each as left, top, right and bottom edge in fractions of the frame. Empty means the whole picture. Set in the window. |
+| `regions` | `[]` | Parts of the picture that are read, each with `box` (left, top, right and bottom edge in fractions of the frame), `style` (`null` for the default look, or a look of its own with the same keys as `style`), `display` (`null` to draw the translations over the original text, or the box where they are drawn) and `overlay` (which entry of `overlays` draws them, counted from 0). Empty means the whole picture. Set in the window. |
 | `start_automatically` | `false` | Start translating when the program opens. Set in the window. |
 | `hotkey` | none | The show/hide key: Windows key code, modifiers (1 Alt, 2 Ctrl, 4 Shift) and the label shown in the window. Set in the window. |
-| `opacity` | `0.85` | Opacity of the black background behind a translation, 0 to 1. Set in the window. |
-| `scenes` | `[]` | Scenes that get the overlay source when it is created. Empty means the scene that is on air at that moment. |
-| `overlay_source` | `Translation overlay` | Name of the browser source that draws the translations. |
-| `create_overlay_source` | `true` | Create the overlay source if it does not exist, and keep its address current. |
+| `style` | Segoe UI Semibold, white on black 85 % | The default look: `font`, `size` (0 = the size of the original text, else pixels in a 1080p picture), `bold`, `italic`, `color`, `background`, `opacity` (0 to 1), `outline` (pixels), `outline_color` and `align` (`auto`, `left`, `center`, `right`). Set in the window. |
+| `scenes` | `[]` | Scenes that get a translation source when it is created. Empty means the scene that is on air at that moment. |
+| `overlays` | one source, `Translation overlay` | Browser sources that draw the translations, each `{"name": ...}`. The first one serves the whole picture and every area that has no other. Set in the window. |
+| `create_overlay_source` | `true` | Create the translation sources that do not exist, and keep their addresses current. |
 | `context` | a sentence about games | One or two English sentences telling the model what kind of text it gets and how to address the reader. |
 | `model` | `translategemma:12b` | Ollama model. It is downloaded on the first start. |
 | `ollama_url` | `http://127.0.0.1:11434` | Ollama server. It can run on another PC. |
@@ -184,8 +229,9 @@ On a PC with a Ryzen 9 5950X and an RTX 5080, a 1080p frame from a 4K canvas, En
   graphics card was busy with another game, which about doubled all times: two areas then took as long as the whole frame
   in the game (150 to 270 ms against 170 to 270 ms) and three areas about a quarter less on the menu screen (430 to 620 ms
   against 560 to 820 ms).
-- Translation: a subtitle 0.5 to 1 s after it appears. Ollama adds about 0.35 s to every call, which is why short labels are
-  sent in batches; 12 menu items took 1.3 s.
+- Translation: Ollama adds about 0.35 s to every request before the model starts working. Through Ollama a subtitle took
+  0.57 to 1.08 s (median 0.64 s), straight to its llama-server 0.14 to 0.72 s (median 0.28 s) with the same translations.
+  The window then showed subtitles 0.4 to 0.85 s after they appeared. Short labels go in batches; 5 menu items took 0.4 s.
 - OBS dropped no rendered frames in any run of about 3000 frames.
 - Graphics memory: 7.5 GB for the model, about 13 GB in total with OBS idle on a 4K canvas.
 
@@ -194,7 +240,10 @@ On a PC with a Ryzen 9 5950X and an RTX 5080, a 1080p frame from a 4K canvas, En
 Tested: starting and stopping from the window, changing the target language while translating, choosing one and several
 areas and going back to the whole picture while translating, the built program and the installed program against a running OBS,
 creation of the overlay source, silent install and uninstall, the download of the translation model, the automatic choice of
-the game source, the start on opening, and showing and hiding with the key.
+the game source, the start on opening, showing and hiding with the key, and, with a test picture in a running OBS, two
+translation sources with an area drawn in another place, hiding one source, adding and removing a source in the look
+editor and moving an area's place in *Areas to read*. The windows were checked in dark and light mode on a 4K display at
+125 %.
 
 Tested only in part:
 
@@ -211,7 +260,8 @@ mouse, not by hand.
 
 ## Limits
 
-- The original text shows through the semi-transparent background. Move **Background opacity** to 100 % for a solid one.
+- The original text shows through a semi-transparent background. Set the background opacity to 100 % in *Look of
+  translations* for a solid one.
 - The translation is as good as the local model. Slang is sometimes wrong, and a brand name that looks like a word can get
   a nonsense translation.
 - A translation longer than the original is shrunk to 70 % of the original size at most and then grows over its neighbours.

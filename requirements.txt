@@ -1,3 +1,4 @@
 rapidocr
 onnxruntime-directml
 websockets
+sv-ttk

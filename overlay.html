@@ -16,21 +16,39 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 <script>
 (function () {
   var query = new URLSearchParams(location.search), canvas = document.getElementById('canvas'), elements = {};
-  var address = query.get('ws') || 'ws://127.0.0.1:8777';
-  var background = 'rgba(0, 0, 0, 0.85)';
+  var address = query.get('ws') || 'ws://127.0.0.1:8777', mine = parseInt(query.get('overlay') || '0', 10);
+  var plain = {font: 'Segoe UI Semibold', size: 0, bold: false, italic: false, color: '#ffffff', background: '#000000',
+               opacity: 0.85, outline: 0, outline_color: '#000000', align: 'auto'};
   document.documentElement.style.zoom = parseFloat(query.get('scale')) || 1;
+  function rgba(hex, alpha) {
+    var v = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (v >> 16 & 255) + ', ' + (v >> 8 & 255) + ', ' + (v & 255) + ', ' + alpha + ')';
+  }
+  function outline(width, color) {
+    if (!width) return 'none';
+    var shadows = [];
+    for (var i = 0; i < 16; i++)
+      shadows.push((Math.cos(i * Math.PI / 8) * width).toFixed(2) + 'px ' + (Math.sin(i * Math.PI / 8) * width).toFixed(2) + 'px 0 ' + color);
+    return shadows.join(', ');
+  }
   function create(m) {
-    var el = document.createElement('div'), s = el.style;
+    var st = m.style || plain, el = document.createElement('div'), s = el.style;
     var x0 = m.box[0] * 1920, y0 = m.box[1] * 1080, w = (m.box[2] - m.box[0]) * 1920, h = (m.box[3] - m.box[1]) * 1080;
-    var size = m.line_height * 1080 * 0.74, min = size * 0.7;
+    var fixed = st.size > 0, size = fixed ? st.size : m.line_height * 1080 * 0.74, min = fixed ? size : size * 0.7;
+    var align = st.align === 'auto' ? (m.centered ? 'center' : 'left') : st.align;
     el.className = 'item';
     el.textContent = m.text;
     canvas.appendChild(el);
-    s.background = background;
+    s.fontFamily = '"' + st.font + '", "Segoe UI", Arial, sans-serif';
+    s.fontWeight = st.bold ? '700' : '400';
+    s.fontStyle = st.italic ? 'italic' : 'normal';
+    s.color = st.color;
+    s.background = rgba(st.background, st.opacity);
+    s.textShadow = outline(st.outline, st.outline_color);
     s.top = (y0 - 2) + 'px';
     s.minHeight = (h + 4) + 'px';
-    s.textAlign = m.centered ? 'center' : 'left';
-    s.justifyContent = m.centered ? 'center' : 'flex-start';
+    s.textAlign = align;
+    s.justifyContent = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
     s.fontSize = size + 'px';
     if (m.rows > 1) {
       s.left = (x0 - 8) + 'px';
@@ -40,7 +58,8 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
       s.whiteSpace = 'nowrap';
       s.minWidth = (w + 16) + 'px';
       while (el.offsetWidth > w + 17 && size > min) s.fontSize = (size *= 0.94) + 'px';
-      s.left = Math.max(4, Math.min(1916 - el.offsetWidth, m.centered ? x0 + w / 2 - el.offsetWidth / 2 : x0 - 8)) + 'px';
+      var left = align === 'center' ? x0 + w / 2 - el.offsetWidth / 2 : align === 'right' ? x0 + w + 8 - el.offsetWidth : x0 - 8;
+      s.left = Math.max(4, Math.min(1916 - el.offsetWidth, left)) + 'px';
     }
     el.classList.add('on');
     return el;
@@ -48,8 +67,16 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
   function update(items) {
     var alive = {};
     items.forEach(function (m) {
+      var look = JSON.stringify(m.style) + m.text;
       alive[m.id] = 1;
-      if (!elements[m.id]) elements[m.id] = create(m);
+      if (elements[m.id] && elements[m.id].look !== look) {
+        elements[m.id].remove();
+        delete elements[m.id];
+      }
+      if (!elements[m.id]) {
+        elements[m.id] = create(m);
+        elements[m.id].look = look;
+      }
     });
     Object.keys(elements).forEach(function (id) {
       if (alive[id]) return;
@@ -59,16 +86,10 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
       setTimeout(function () { el.remove(); }, 150);
     });
   }
-  function shade(opacity) {
-    background = 'rgba(0, 0, 0, ' + opacity + ')';
-    Object.keys(elements).forEach(function (id) { elements[id].style.background = background; });
-  }
   function connect() {
     var ws = new WebSocket(address);
     ws.onmessage = function (e) {
-      var message = JSON.parse(e.data);
-      if (message.opacity !== undefined) shade(message.opacity);
-      update(message.items);
+      update(JSON.parse(e.data).items.filter(function (m) { return (m.overlay || 0) === mine; }));
     };
     ws.onclose = function () { update([]); setTimeout(connect, 2000); };
   }

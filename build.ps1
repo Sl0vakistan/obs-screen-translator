@@ -17,8 +17,8 @@ if ($LASTEXITCODE) { throw 'downloading the text-reading models failed' }
 Remove-Item "$root\build", "$root\dist" -Recurse -Force -ErrorAction SilentlyContinue
 & $python -m PyInstaller --noconfirm --clean --windowed --log-level WARN --name $name `
     --distpath "$root\dist" --workpath "$root\build" --specpath "$root\build" `
-    --add-data "$root\overlay.html;." --add-data "$root\languages.json;." `
-    --collect-data rapidocr --collect-submodules rapidocr --collect-submodules websockets `
+    --add-data "$root\overlay.html;." --add-data "$root\languages.json;." --add-data "$root\CHANGELOG.md;." `
+    --collect-data rapidocr --collect-data sv_ttk --collect-submodules rapidocr --collect-submodules websockets `
     "$root\translator.py"
 if ($LASTEXITCODE) { throw 'PyInstaller failed' }
 

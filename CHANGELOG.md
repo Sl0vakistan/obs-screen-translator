@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.0 - 2026-11-20
+
+- **Areas shown somewhere else**: an area can be read in one place and its translation drawn in another (*Areas to read*
+  → *Draw where area N is shown*). The translation is moved there and scaled to the new box.
+- **More translation sources in OBS**: *Look of translations* → *Shown in OBS source* sends an area to a browser source of
+  its own. *New source...* creates it in OBS, *Remove source* removes it. Each source can be placed, cropped, filtered
+  and shown or hidden in OBS separately; the areas of a hidden source are not read. The show/hide key switches all of
+  them.
+- **New look of the windows**: Windows 11 style (the Sun Valley theme), dark or light as Windows is set, settings grouped
+  into sections and title bars in the colour of the window. *Help* is a button at the top right.
+- **Look of translations** (*Edit...* in the window, replaces the opacity slider): font, size (the size of the original
+  text or a fixed size), bold, italic, text colour, background colour and opacity, outline and alignment.
+- One default look for all areas, and any area can keep it or get a look of its own (*Settings for* in the editor).
+- While the editor is open, OBS shows a sample translation with the look being edited; changes apply at once, also to
+  translations that are on screen.
+- *Help* → *What's new in 0.6.0* shows the changes of the installed version.
+- The guide (*Help* → *Installation and setup*) and the README explain how to get Ollama running. After its installation
+  Ollama opens a window of its own with commands for a terminal (*Launch*); the translator does not need them, and right
+  after installing Ollama it now says so in its window.
+- Settings: `style` holds the default look and `overlays` lists the translation sources (it replaces `overlay_source`);
+  each entry of `regions` is now `{"box": [...], "style": null or a look, "display": null or a box, "overlay": 0}`.
+  Settings of 0.5.0 (`opacity`, `overlay_source`, areas as plain lists) are converted on the first start.
+- The address of the overlay source carries the version, so OBS loads the new page after an update.
+- Translations appear about a third of a second sooner. Ollama spends about 0.35 s on every request before the model starts
+  working. After the first answer the program sends the text straight to the llama-server that Ollama starts for the model,
+  with the template and settings Ollama would use. It does so only after checking that a test sentence comes back exactly
+  as through Ollama, and it goes back to Ollama whenever that connection fails. Ollama still loads, keeps and unloads the
+  model; the program reminds it every five minutes that the model is in use. The window showed subtitles 0.4 to 0.85 s
+  after they appeared, against 1.2 to 1.5 s before.
+
 ## 0.5.0 - 2026-11-20
 
 The program sets up most things itself, so installing comes down to the installer and the Start button.

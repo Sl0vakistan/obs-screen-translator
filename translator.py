@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import base64
+import copy
 import ctypes
 import ctypes.wintypes
 import difflib
@@ -21,30 +22,35 @@ import tkinter as tk
 import types
 import urllib.request
 import webbrowser
-from tkinter import messagebox, ttk
+from tkinter import colorchooser, font as tkfont, messagebox, ttk
 
 import cv2
 import numpy as np
+import sv_ttk
 import websockets
 from rapidocr import RapidOCR
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 PROJECT = "https://github.com/Sl0vakistan/obs-screen-translator"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE
 LANGUAGES = json.loads((HERE / "languages.json").read_text(encoding="utf-8"))
+STYLE = {"font": "Segoe UI Semibold", "size": 0, "bold": False, "italic": False, "color": "#ffffff", "background": "#000000",
+         "opacity": 0.85, "outline": 0, "outline_color": "#000000", "align": "auto"}
+ALIGN = {"auto": "Automatic", "left": "Left", "center": "Centre", "right": "Right"}
+SAMPLE = "This is how the translations will look"
 DEFAULTS = {
     "obs_source": "",
     "scenes": [],
-    "overlay_source": "Translation overlay",
+    "overlays": [{"name": "Translation overlay"}],
     "create_overlay_source": True,
     "source_language": "en",
     "target_language": "sk",
     "regions": [],
     "start_automatically": False,
     "hotkey": None,
-    "opacity": 0.85,
+    "style": STYLE,
     "context": "The text is shown on screen in a video game (subtitles of spoken dialogue, messages, hints, menu items). "
                "Leave names of people, places, brands and anything that is not a real word exactly as written.",
     "model": "translategemma:12b",
@@ -59,6 +65,10 @@ DEFAULTS = {
 }
 log = print
 ask = lambda question: False
+OPTIONS = {"temperature": 0, "num_predict": 400, "num_ctx": 2048}
+# The settings Ollama itself sends to the llama-server it starts for a model (its defaults plus TranslateGemma's top_k, top_p and stop).
+DIRECT = {"temperature": 0, "top_k": 64, "top_p": 0.95, "min_p": 0, "repeat_penalty": 1.1, "repeat_last_n": 64, "n_predict": 400,
+          "cache_prompt": True, "stop": ["<end_of_turn>"]}
 GUIDE = """# What you need
 - Windows 10 or 11 and OBS Studio from obsproject.com.
 - A graphics card with about 8 GB of free memory for the translation model, and about 10 GB of free disk space.
@@ -66,32 +76,49 @@ GUIDE = """# What you need
 # First start
 1. Start OBS once, then this program. The order does not matter: the program waits for OBS.
 2. If the WebSocket server in OBS is off, the program asks to turn it on. Close OBS when it says so and start OBS again. The previous OBS setting is kept in a backup file.
-3. If Ollama is missing, the program asks to download it from ollama.com and install it. Ollama runs the translation model.
-4. On the first Start the translation model (8.1 GB) is downloaded, once.
+3. If Ollama is missing, the program asks to download it from ollama.com (1.9 GB) and install it. Ollama runs the translation model. After its installation Ollama opens a window of its own with commands for a terminal: close it, the translator does not need them (see Ollama below).
+4. On the first Start the translation model (8.1 GB) is downloaded, once. The window shows the progress and says "translation model ready" when it can translate.
 
 # Setting up
-- Translate from / Translate to: the language of the game and the language of your viewers. The target starts as the language of Windows.
-- Game source in OBS: the source with the game. A single capture card in the scene that is on air is chosen by itself.
-- Area to read: optional rectangles around the parts to translate, for example the subtitles. With none the whole picture is read.
-- Background opacity: how dark the box behind a translation is, from none to solid black.
-- Show/hide key: one key that shows and hides the translations from any window, also from a Stream Deck.
+- Languages: the language of the game and the language of your viewers. The target starts as the language of Windows.
+- Game > Source in OBS: the source with the game. A single capture card in the scene that is on air is chosen by itself.
+- Game > Areas to read: optional rectangles around the parts to translate, for example the subtitles. With none the whole picture is read. For each area you can also draw where its translation is shown, if not over the original text.
+- On screen > Look: font, size, colours, background, outline and alignment. One look for all areas, or a look of its own for any area. While the editor is open, a sample translation is shown in OBS. Each area can also be shown in an OBS source of its own: New source... adds another browser source, which you can move, show and hide in OBS on its own.
+- On screen > Show/hide key: one key that shows and hides all translation sources from any window, also from a Stream Deck.
 - Start translating when this program opens: no need to press Start next time.
 
 Then press Start. A browser source named Translation overlay appears in the scene that is on air. Keep it above the game.
 
 # During the stream
-- Hiding the Translation overlay source in OBS, or pressing the show/hide key, pauses reading and translating.
+- Hiding a translation source in OBS stops reading the areas shown in it. With all of them hidden, for example with the show/hide key, reading and translating pause.
 - Changing a language or an area while translating restarts the translation by itself.
 - Keep this window open. Closing it removes the translations from the picture and unloads the translation model from the graphics card.
 
+# Ollama
+Ollama is a free program that runs the translation model on this PC. The translator only sends it text; nothing leaves your computer.
+- You do not have to start Ollama or type anything in a terminal. Start in this window starts Ollama in the background when it is not running and downloads the model when it is missing.
+- After its installation Ollama opens its own window, Launch, saying "Copy a command and run it in your terminal", with commands such as ollama launch claude. Those start AI coding tools and have nothing to do with the translator. Close that window; Ollama keeps running in the background.
+- Installing it by hand: run OllamaSetup.exe from ollama.com/download. It needs no account and no administrator rights.
+- Is it running? Open http://127.0.0.1:11434 in a browser: it says "Ollama is running".
+- Downloading the model before a stream: press Start once and wait for "translation model ready".
+- Less than about 8 GB of free graphics memory: use the smaller model, which translates noticeably worse. Help > Open the settings folder, open settings.json in Notepad, change translategemma:12b to translategemma:4b (3.3 GB, about 2.7 GB of graphics memory) and start the program again.
+- Little space on drive C: Ollama keeps the models in .ollama\\models in your user folder. To keep them elsewhere, open Ollama from the Start menu and set Model location in its Settings to a folder on another drive, best before the model is downloaded.
+- Ollama on another PC: there, turn on Expose Ollama to the network in Ollama's Settings and allow Ollama through the Windows firewall. Here, set ollama_url in settings.json to http://<address of that PC>:11434. Translations then take about a third of a second longer.
+
 # When something does not work
 - "Waiting for OBS": OBS is not running, or its WebSocket server is off (Tools > WebSocket Server Settings in OBS).
-- No translations on screen: the Translation overlay source is hidden, is not in the scene that is on air, or sits inside a nested scene.
+- "Ollama did not start": open Ollama from the Start menu, wait for its icon next to the clock and press Start again.
+- The download of the model stopped: check the internet connection and the free disk space, then press Start again. The download continues where it stopped.
+- Translations take several seconds: the model does not fit into the graphics memory, for example next to a demanding game. Use translategemma:4b (see Ollama).
+- No translations on screen: the translation source (Translation overlay, or one you added) is hidden, is not in the scene that is on air, or sits inside a nested scene.
 - Moving text stays untranslated until it stands still for a moment. This is on purpose: it skips signs and number plates.
 - The first translation after a break is late: the model is being loaded, which takes about 12 seconds.
 - Cyrillic, Arabic, Korean and other scripts are not read yet. Latin script and Chinese are.
 """
 reader = None
+THEME = "light"
+COLORS = {"dark": {"bg": "#1c1c1c", "fg": "#fafafa", "field": "#232323", "line": "#3a3a3a", "muted": "#a0a0a0"},
+          "light": {"bg": "#fafafa", "fg": "#1c1c1c", "field": "#ffffff", "line": "#e0e0e0", "muted": "#5f5f5f"}}
 
 
 class Problem(Exception):
@@ -108,6 +135,68 @@ def short_path(path):
     return text
 
 
+def windows_theme():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+            return "light" if winreg.QueryValueEx(key, "AppsUseLightTheme")[0] else "dark"
+    except OSError:
+        return "light"
+
+
+def themed(window):
+    window.configure(bg=COLORS[THEME]["bg"])
+    if sys.platform == "win32":
+        # Windows draws the title bar itself: attribute 20 turns on its dark mode, 35 gives it the colour of the window (Windows 11).
+        window.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+        bg = COLORS[THEME]["bg"]
+        for attribute, value in ((20, THEME == "dark"), (35, int(bg[5:7] + bg[3:5] + bg[1:3], 16))):
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(ctypes.c_int(value)), 4)
+
+
+def ask_text(parent, title, prompt, initial):
+    top = tk.Toplevel(parent)
+    top.title(title)
+    top.resizable(False, False)
+    top.transient(parent)
+    result = {}
+    frame = ttk.Frame(top, padding=16)
+    frame.pack(fill="both")
+    ttk.Label(frame, text=prompt).pack(anchor="w")
+    entry = ttk.Entry(frame, width=42)
+    entry.insert(0, initial)
+    entry.pack(fill="x", pady=(8, 14))
+    buttons = ttk.Frame(frame)
+    buttons.pack(fill="x")
+
+    def done(value):
+        result["value"] = value
+        top.destroy()
+    ttk.Button(buttons, text="Cancel", command=lambda: done(None)).pack(side="right")
+    ttk.Button(buttons, text="OK", style="Accent.TButton", command=lambda: done(entry.get())).pack(side="right", padx=(0, 8))
+    entry.bind("<Return>", lambda e: done(entry.get()))
+    entry.focus_set()
+    entry.select_range(0, "end")
+    themed(top)
+    top.grab_set()
+    parent.wait_window(top)
+    return result.get("value")
+
+
+def changes():
+    text = (HERE / "CHANGELOG.md").read_text(encoding="utf-8")
+    section = re.search(rf"^## {re.escape(VERSION)} .*?$(.*?)(?=^## |\Z)", text, re.M | re.S).group(1)
+    lines = []
+    for line in section.strip().splitlines():
+        if lines and lines[-1] and line and not line.startswith("- "):
+            lines[-1] += " " + line.strip()
+        else:
+            lines.append(line)
+    body = "**".join(part.replace("*", "").replace("`", "") for part in "\n".join(lines).split("**"))
+    return f"# What's new in {VERSION}\n{body}\n\nThe changes of every version: {PROJECT}/blob/main/CHANGELOG.md"
+
+
 def system_language():
     if sys.platform == "win32":
         kernel = ctypes.windll.kernel32
@@ -120,10 +209,20 @@ def system_language():
 
 def load_settings(path):
     stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"target_language": system_language()}
-    settings = {**DEFAULTS, **stored}
+    settings = {**copy.deepcopy(DEFAULTS), **copy.deepcopy(stored)}
     single = settings.pop("region", None)
     if single and single != [0, 0, 1, 1] and not settings["regions"]:
         settings["regions"] = [single]
+    opacity = settings.pop("opacity", None)
+    settings["style"] = {**STYLE, **({} if opacity is None else {"opacity": opacity}), **stored.get("style", {})}
+    name = settings.pop("overlay_source", None)
+    if name and "overlays" not in stored:
+        settings["overlays"] = [{"name": name}]
+    settings["regions"] = [r if isinstance(r, dict) else {"box": r, "style": None} for r in settings["regions"]]
+    for region in settings["regions"]:
+        region["style"] = {**STYLE, **region["style"]} if region.get("style") else None
+        region["display"] = region.get("display")
+        region["overlay"] = region.get("overlay", 0) if 0 <= region.get("overlay", 0) < len(settings["overlays"]) else 0
     if settings != stored:
         save_settings(path, settings)
     return settings
@@ -236,21 +335,33 @@ def likely_game_source(kinds, in_scene):
                 return found[0] if len(found) == 1 else None
 
 
-async def toggle_overlay(name):
+async def toggle_overlays(names):
     obs = await OBS().connect()
     scenes = [(await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]]
     scenes += [s["sceneName"] for s in (await obs.request("GetSceneList"))["scenes"] if s["sceneName"] != scenes[0]]
     shown = None
     for scene in scenes:
-        try:
-            item = (await obs.request("GetSceneItemId", sceneName=scene, sourceName=name))["sceneItemId"]
-        except RuntimeError:
-            continue
-        if shown is None:
-            shown = not (await obs.request("GetSceneItemEnabled", sceneName=scene, sceneItemId=item))["sceneItemEnabled"]
-        await obs.request("SetSceneItemEnabled", sceneName=scene, sceneItemId=item, sceneItemEnabled=shown)
+        for item in (await obs.request("GetSceneItemList", sceneName=scene))["sceneItems"]:
+            if item["sourceName"] in names and item["inputKind"] == "browser_source":
+                if shown is None:
+                    shown = not item["sceneItemEnabled"]
+                await obs.request("SetSceneItemEnabled", sceneName=scene, sceneItemId=item["sceneItemId"], sceneItemEnabled=shown)
     await obs.ws.close()
     return shown
+
+
+async def remove_input(name):
+    obs = await OBS().connect()
+    if any(i["inputName"] == name and i["inputKind"] == "browser_source" for i in (await obs.request("GetInputList"))["inputs"]):
+        await obs.request("RemoveInput", inputName=name)
+    await obs.ws.close()
+
+
+def remove_source(name):
+    try:
+        asyncio.run(remove_input(name))
+    except (Problem, OSError, websockets.WebSocketException):
+        pass
 
 
 def install_ollama():
@@ -282,6 +393,7 @@ def install_ollama():
     setup.unlink()
     if failed:
         raise Problem("Installing Ollama failed. Install it yourself from https://ollama.com/download and press Start again.")
+    log("Ollama is installed. It may open a window of its own with commands for a terminal: close it, the translator does not need them.")
 
 
 async def obs_picture(source):
@@ -318,6 +430,9 @@ class Translator:
         self.cache = json.loads(self.cache_file.read_text(encoding="utf-8")) if self.cache_file.exists() else {}
         self.obs = None
         self.closed = False
+        self.direct = None
+        self.touched = 0.0
+        self.sample = None
 
     def ollama(self, path, body=None, timeout=60):
         request = urllib.request.Request(self.s["ollama_url"] + path, data=body and json.dumps(body).encode(),
@@ -359,30 +474,38 @@ class Translator:
                     if percent is not None and percent >= shown + 10:
                         shown = percent
                         log(f"  {percent} %")
-        log(f"translation model ready: {self.s['model']} | {self.translate(['Hello there.'])[0]} | {len(self.cache)} cached translations")
+        hello = self.translate(["Hello there."])[0]
+        log(f"translation model ready: {self.s['model']} | {hello} | {len(self.cache)} cached translations"
+            f" | {'direct connection to the model' if self.direct else 'through Ollama'}")
 
-    def read(self, frame):
+    # visible: the translation sources shown in OBS; areas whose source is hidden are not read.
+    def read(self, frame, visible=None):
         h, w = frame.shape[:2]
-        picture, strips = frame, [(0, h, 0, 0)]
+        picture, strips = frame, [(0, h, 0, 0, None)]
+        if not self.s["regions"] and visible is not None and 0 not in visible:
+            return []
         if self.s["regions"]:
-            areas = [tuple(int(a * b) for a, b in zip(region, (w, h, w, h))) for region in self.s["regions"]]
-            picture = np.zeros((sum(b - t for l, t, r, b in areas) + 16 * (len(areas) - 1), max(r - l for l, t, r, b in areas), 3), np.uint8)
+            areas = [(n, *(int(a * b) for a, b in zip(region["box"], (w, h, w, h)))) for n, region in enumerate(self.s["regions"])
+                     if visible is None or region["overlay"] in visible]
+            if not areas:
+                return []
+            picture = np.zeros((sum(b - t for n, l, t, r, b in areas) + 16 * (len(areas) - 1), max(r - l for n, l, t, r, b in areas), 3), np.uint8)
             strips, y = [], 0
-            for l, t, r, b in areas:
+            for n, l, t, r, b in areas:
                 picture[y:y + b - t, :r - l] = frame[t:b, l:r]
-                strips.append((y, y + b - t, l, t))
+                strips.append((y, y + b - t, l, t, n))
                 y += b - t + 16
         r = text_reader(self.s)(picture)
         lines = []
         for box, text, score in zip(r.boxes, r.txts, r.scores) if r.txts else ():
             middle = (box[:, 1].min() + box[:, 1].max()) / 2
-            start, _, left, top = min(strips, key=lambda s: max(s[0] - middle, middle - s[1], 0))
+            start, _, left, top, region = min(strips, key=lambda s: max(s[0] - middle, middle - s[1], 0))
             x0, y0 = float((box[:, 0].min() + left) / w), float((box[:, 1].min() - start + top) / h)
             x1, y1 = float((box[:, 0].max() + left) / w), float((box[:, 1].max() - start + top) / h)
             if score >= self.s["min_score"] and (y1 - y0) * 1080 >= self.s["min_height"] and re.search(r"[^\W\d_]{3}", text):
-                lines.append((y0, x0, x1, y1, " ".join(text.split())))
+                lines.append((y0, x0, x1, y1, " ".join(text.split()), region))
         blocks = []
-        for y0, x0, x1, y1, text in sorted(lines):
+        for y0, x0, x1, y1, text, region in sorted(lines, key=lambda line: line[:5]):
             lh = y1 - y0
             lw = lh * h / w
             for b in blocks:
@@ -395,19 +518,98 @@ class Translator:
                     b["last"] = (x0, y0, x1, y1)
                     break
             else:
-                blocks.append({"lines": [text], "box": [x0, y0, x1, y1], "last": (x0, y0, x1, y1), "centered": 0})
-        return [types.SimpleNamespace(text=" ".join(b["lines"]), box=b["box"], rows=len(b["lines"]),
+                blocks.append({"lines": [text], "box": [x0, y0, x1, y1], "last": (x0, y0, x1, y1), "centered": 0, "region": region})
+        return [types.SimpleNamespace(text=" ".join(b["lines"]), box=b["box"], rows=len(b["lines"]), region=b["region"],
                                       line_height=(b["box"][3] - b["box"][1]) / len(b["lines"]),
                                       centered=b["centered"] > 0 if len(b["lines"]) > 1 else abs(b["box"][0] + b["box"][2] - 1) < 0.04)
                 for b in blocks]
 
+    # Ollama spends about a third of a second on every request before the model starts working, so after the first answer the
+    # program talks to the llama-server that Ollama started for the model, as long as it answers exactly like Ollama does.
     def ask_model(self, text):
+        if self.direct:
+            try:
+                answer = self.ask_direct(self.direct, text)
+                if time.monotonic() - self.touched > 300:
+                    self.touched = time.monotonic()
+                    threading.Thread(target=self.touch, daemon=True).start()
+                return answer
+            except (OSError, ValueError, KeyError):
+                self.direct = None
+        answer = self.ask_ollama(text)
+        if self.direct is None:
+            self.direct = self.find_direct()
+            self.touched = time.monotonic()
+        return answer
+
+    def ask_ollama(self, text):
         if self.closed:
             raise Problem("the program is closing")
         body = {"model": self.s["model"], "messages": [{"role": "user", "content": self.prompt + text}], "stream": False,
-                "keep_alive": "30m", "options": {"temperature": 0, "num_predict": 400, "num_ctx": 2048}}
+                "keep_alive": "30m", "options": OPTIONS}
         with self.ollama("/api/chat", body) as response:
             return json.loads(response.read())["message"]["content"]
+
+    def ask_direct(self, url, text):
+        body = {"prompt": f"<start_of_turn>user\n{self.prompt}{text}<end_of_turn>\n<start_of_turn>model\n", **DIRECT}
+        request = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return json.loads(response.read())["content"]
+
+    def find_direct(self):
+        try:
+            with self.ollama("/api/show", {"model": self.s["model"]}) as response:
+                show = json.loads(response.read())
+            if "<start_of_turn>" not in show.get("template", ""):
+                return False
+            model_file = re.search(r"^FROM (.+)$", show["modelfile"], re.M).group(1).strip().lower()
+            lines = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                    "(Get-CimInstance Win32_Process -Filter \"Name='llama-server.exe'\").CommandLine"],
+                                   env={**os.environ, "PSModulePath": ""}, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                   creationflags=subprocess.CREATE_NO_WINDOW).stdout.splitlines()
+            port = re.search(r"--port\s+(\d+)", next(line for line in lines if model_file in line.lower())).group(1)
+            url = f"http://127.0.0.1:{port}/completion"
+            check = "I told you, we do this my way or not at all."
+            return url if self.ask_direct(url, check).strip() == self.ask_ollama(check).strip() else False
+        except (OSError, ValueError, KeyError, AttributeError, StopIteration):
+            return False
+
+    def touch(self):
+        try:
+            self.ollama("/api/generate", {"model": self.s["model"], "keep_alive": "30m", "stream": False, "options": OPTIONS}).close()
+        except OSError:
+            pass
+
+    def region(self, n):
+        regions = self.s["regions"]
+        return regions[n] if n is not None and 0 <= n < len(regions) else None
+
+    def style(self, n):
+        region = self.region(n)
+        return region["style"] if region and region["style"] else self.s["style"]
+
+    def overlay(self, n):
+        region = self.region(n)
+        return region["overlay"] if region else 0
+
+    # An area can show its translations elsewhere: the boxes are moved and scaled from where they are read to where they are shown.
+    def place(self, n, box, line_height):
+        region = self.region(n)
+        if not region or not region["display"]:
+            return box, line_height
+        (a0, b0, a1, b1), (c0, d0, c1, d1) = region["box"], region["display"]
+        sx, sy = (c1 - c0) / (a1 - a0), (d1 - d0) / (b1 - b0)
+        return [c0 + (box[0] - a0) * sx, d0 + (box[1] - b0) * sy, c0 + (box[2] - a0) * sx, d0 + (box[3] - b0) * sy], line_height * sy
+
+    # While the look editor is open, a sample translation shows the chosen look in OBS.
+    def sample_items(self):
+        if self.sample is None:
+            return []
+        region = self.region(self.sample)
+        box = (region["display"] or region["box"]) if region else [0.2, 0.8, 0.8, 0.86]
+        middle, height = (box[1] + box[3]) / 2, min(0.034, box[3] - box[1])
+        return [{"id": "sample", "text": SAMPLE, "box": [box[0] + 0.01, middle - height / 2, box[2] - 0.01, middle + height / 2],
+                 "rows": 1, "line_height": height, "centered": True, "style": self.style(self.sample), "overlay": self.overlay(self.sample)}]
 
     def tidy(self, text, translation):
         translation = " ".join(translation.split())
@@ -433,35 +635,41 @@ class Translator:
                                imageCompressionQuality=85))["imageData"]
         return cv2.imdecode(np.frombuffer(base64.b64decode(d.split(",", 1)[1]), np.uint8), cv2.IMREAD_COLOR)
 
-    async def prepare_overlay(self, obs):
-        name = self.s["overlay_source"]
+    async def prepare_overlays(self, obs):
         video = await obs.request("GetVideoSettings")
-        url = (HERE / "overlay.html").as_uri() + f"?scale={video['baseWidth'] / 1920:g}&ws=ws://127.0.0.1:{self.s['port']}"
-        if any(i["inputName"] == name for i in (await obs.request("GetInputList"))["inputs"]):
-            if (await obs.request("GetInputSettings", inputName=name))["inputSettings"].get("url", "") != url:
-                await obs.request("SetInputSettings", inputName=name, inputSettings={"url": url})
-            return
-        scenes = self.s["scenes"] or [(await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]]
-        await obs.request("CreateInput", sceneName=scenes[0], inputName=name, inputKind="browser_source",
-                          inputSettings={"url": url, "width": video["baseWidth"], "height": video["baseHeight"], "shutdown": False,
-                                         "restart_when_active": False})
-        for scene in scenes[1:]:
-            await obs.request("CreateSceneItem", sceneName=scene, sourceName=name)
-        log(f'added the browser source "{name}" to: {", ".join(scenes)}')
+        existing = {i["inputName"]: i["inputKind"] for i in (await obs.request("GetInputList"))["inputs"]}
+        for n, overlay in enumerate(self.s["overlays"]):
+            name = overlay["name"]
+            if existing.get(name, "browser_source") != "browser_source":
+                raise Problem(f'OBS already has a source named "{name}" that is not a browser source. In Look of translations, '
+                              f'remove this translation source and add one with another name.')
+            url = (HERE / "overlay.html").as_uri() + (f"?scale={video['baseWidth'] / 1920:g}&ws=ws://127.0.0.1:{self.s['port']}"
+                                                      f"&overlay={n}&v={VERSION}")
+            if name in existing:
+                if (await obs.request("GetInputSettings", inputName=name))["inputSettings"].get("url", "") != url:
+                    await obs.request("SetInputSettings", inputName=name, inputSettings={"url": url})
+                continue
+            scenes = self.s["scenes"] or [(await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]]
+            await obs.request("CreateInput", sceneName=scenes[0], inputName=name, inputKind="browser_source",
+                              inputSettings={"url": url, "width": video["baseWidth"], "height": video["baseHeight"], "shutdown": False,
+                                             "restart_when_active": False})
+            for scene in scenes[1:]:
+                await obs.request("CreateSceneItem", sceneName=scene, sourceName=name)
+            log(f'added the browser source "{name}" to: {", ".join(scenes)}')
 
-    async def overlay_visible(self, obs):
+    async def visible_overlays(self, obs):
         try:
             scene = (await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]
-            item = (await obs.request("GetSceneItemId", sceneName=scene, sourceName=self.s["overlay_source"]))["sceneItemId"]
-            return (await obs.request("GetSceneItemEnabled", sceneName=scene, sceneItemId=item))["sceneItemEnabled"]
+            shown = {i["sourceName"] for i in (await obs.request("GetSceneItemList", sceneName=scene))["sceneItems"] if i["sceneItemEnabled"]}
         except RuntimeError:
-            return False
+            return set()
+        return {n for n, overlay in enumerate(self.s["overlays"]) if overlay["name"] in shown}
 
     async def run(self, publish):
         self.obs = obs = await OBS().connect()
         log("connected to OBS")
         if self.s["create_overlay_source"]:
-            await self.prepare_overlay(obs)
+            await self.prepare_overlays(obs)
         loop = asyncio.get_running_loop()
         tracks = []
         state = types.SimpleNamespace(job=None, n=0, error=None, dirty=False, active=None)
@@ -472,8 +680,12 @@ class Translator:
                 if not t.logged:
                     t.logged = True
                     log(f"{time.monotonic() - t.since:.2f} s  {t.text}\n          {t.translation}")
-            publish({"items": [{"id": t.id, "text": t.translation, "box": t.box, "rows": t.rows, "line_height": t.line_height,
-                                "centered": t.centered} for t in shown], "opacity": self.s["opacity"]})
+            items = []
+            for t in shown:
+                box, line_height = self.place(t.region, t.box, t.line_height)
+                items.append({"id": t.id, "text": t.translation, "box": box, "rows": t.rows, "line_height": line_height,
+                              "centered": t.centered, "style": self.style(t.region), "overlay": self.overlay(t.region)})
+            publish({"items": items + self.sample_items()})
 
         def done(batch, translations):
             state.job = None
@@ -498,17 +710,18 @@ class Translator:
 
         while True:
             started = time.monotonic()
-            active = await self.overlay_visible(obs)
+            visible = await self.visible_overlays(obs)
+            active = bool(visible)
             if active != state.active:
                 state.active = active
-                log("translating" if active else "paused (the overlay source is hidden or not in the current scene)")
+                log("translating" if active else "paused (no translation source is shown in the current scene)")
             if not active:
                 tracks.clear()
                 send()
                 await asyncio.sleep(0.5)
                 continue
             try:
-                blocks = await loop.run_in_executor(None, self.read, await self.frame(obs))
+                blocks = await loop.run_in_executor(None, self.read, await self.frame(obs), visible)
                 state.error = None
             except RuntimeError as e:
                 if str(e) != state.error:
@@ -533,7 +746,7 @@ class Translator:
                     state.n += 1
                     words = re.findall(r"[^\W\d_]+", b.text)
                     tracks.append(types.SimpleNamespace(id=state.n, text=b.text, box=b.box, rows=b.rows, line_height=b.line_height,
-                                                        centered=b.centered, seen=now, since=started, stable=False,
+                                                        centered=b.centered, region=b.region, seen=now, since=started, stable=False,
                                                         translation=self.cache.get(key(b.text)), logged=False,
                                                         sentence=sum(not x.isupper() for x in words) >= 2))
             tracks[:] = [t for t in tracks if now - t.seen <= self.s["linger"]]
@@ -586,7 +799,7 @@ class Translator:
         started = time.perf_counter()
         blocks = self.read(frame)
         log(f"reading took {(time.perf_counter() - started) * 1000:.0f} ms, {len(blocks)} texts")
-        for x0, y0, x1, y1 in self.s["regions"]:
+        for x0, y0, x1, y1 in (region["box"] for region in self.s["regions"]):
             cv2.rectangle(frame, (int(x0 * w), int(y0 * h)), (int(x1 * w) - 1, int(y1 * h) - 1), (0, 204, 255), 2)
         for b in blocks:
             cv2.rectangle(frame, (int(b.box[0] * w), int(b.box[1] * h)), (int(b.box[2] * w), int(b.box[3] * h)), (0, 255, 0), 2)
@@ -602,76 +815,104 @@ class Window:
         self.s = load_settings(settings_file)
         self.messages = queue.Queue()
         self.loop = self.task = self.translator = self.retry = self.said = self.websocket = self.listener = None
+        self.editor = self.sample = None
         self.restart = self.looking = self.started = False
         log = self.messages.put
         ask = self.ask
         self.labels = {f"{name} ({code})": code for code, name in LANGUAGES.items()}
         names = sorted(self.labels)
 
+        global THEME
         self.root = root = tk.Tk()
+        THEME = windows_theme()
+        sv_ttk.set_theme(THEME, root)
         root.title(f"OBS Screen Translator {VERSION}")
-        root.minsize(620, 420)
-        bar = tk.Menu(root)
-        menu = tk.Menu(bar, tearoff=False)
+        # The theme sizes its fonts in pixels; they are scaled to the display like the rest of Windows.
+        scale = root.winfo_fpixels("1i") / 96
+        for name in tkfont.names(root):
+            if name.startswith("SunValley"):
+                font = tkfont.Font(root=root, name=name, exists=True)
+                font.configure(size=round(font.cget("size") * scale))
+        muted = COLORS[THEME]["muted"]
+        page = ttk.Frame(root, padding=(22, 16, 22, 20))
+        page.pack(fill="both", expand=True)
+        head = ttk.Frame(page)
+        head.pack(fill="x")
+        ttk.Label(head, text="OBS Screen Translator", font="SunValleyTitleFont").pack(side="left")
+        ttk.Label(head, text=VERSION, font="SunValleyCaptionFont", foreground=muted).pack(side="left", anchor="s", padx=10, pady=(0, 7))
+        help_button = ttk.Menubutton(head, text="Help")
+        help_button.pack(side="right")
+        menu = tk.Menu(help_button, tearoff=False)
         menu.add_command(label="Installation and setup", command=lambda: Page(root, "Installation and setup", GUIDE))
+        menu.add_command(label=f"What's new in {VERSION}", command=lambda: Page(root, f"What's new in {VERSION}", changes()))
         menu.add_command(label="Details", command=self.details)
         menu.add_separator()
         menu.add_command(label="Open the settings folder", command=lambda: os.startfile(self.file.parent))
         menu.add_command(label="Project page", command=lambda: webbrowser.open(PROJECT))
-        bar.add_cascade(label="Help", menu=menu)
-        root.configure(menu=bar)
-        top = ttk.Frame(root, padding=12)
-        top.pack(fill="x")
-        top.columnconfigure(1, weight=1)
-        ttk.Label(top, text="Translate from").grid(row=0, column=0, sticky="w", pady=4)
-        self.source = ttk.Combobox(top, values=names, state="readonly")
-        self.source.grid(row=0, column=1, columnspan=2, sticky="ew", padx=(8, 0))
-        ttk.Label(top, text="Translate to").grid(row=1, column=0, sticky="w", pady=4)
-        self.target = ttk.Combobox(top, values=names, state="readonly")
-        self.target.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(8, 0))
-        ttk.Label(top, text="Game source in OBS").grid(row=2, column=0, sticky="w", pady=4)
-        self.obs_source = ttk.Combobox(top)
-        self.obs_source.grid(row=2, column=1, sticky="ew", padx=(8, 0))
-        ttk.Button(top, text="Refresh", command=self.refresh).grid(row=2, column=2, padx=(8, 0))
-        ttk.Label(top, text="Area to read").grid(row=3, column=0, sticky="w", pady=4)
-        self.area = ttk.Label(top)
-        self.area.grid(row=3, column=1, sticky="w", padx=(8, 0))
-        ttk.Button(top, text="Choose...", command=self.choose_area).grid(row=3, column=2, padx=(8, 0))
-        ttk.Label(top, text="Background opacity").grid(row=4, column=0, sticky="w", pady=4)
-        self.percent = ttk.Label(top)
-        self.percent.grid(row=4, column=2, padx=(8, 0))
-        self.opacity = ttk.Scale(top, from_=0, to=100, command=self.shade)
-        self.opacity.grid(row=4, column=1, sticky="ew", padx=(8, 0))
-        for event in ("<ButtonRelease-1>", "<KeyRelease>"):
-            self.opacity.bind(event, lambda e: save_settings(self.file, self.s))
-        ttk.Label(top, text="Show/hide key").grid(row=5, column=0, sticky="w", pady=4)
-        self.key = ttk.Label(top)
-        self.key.grid(row=5, column=1, sticky="w", padx=(8, 0))
-        ttk.Button(top, text="Set...", command=lambda: KeyPicker(self)).grid(row=5, column=2, padx=(8, 0))
+        help_button.configure(menu=menu)
+        ttk.Label(page, text="Live translation of the text in an OBS source, drawn over the original.", foreground=muted).pack(anchor="w")
+
+        def card(title):
+            ttk.Label(page, text=title, font="SunValleyBodyStrongFont").pack(anchor="w", pady=(16, 6))
+            frame = ttk.Frame(page, style="Card.TFrame", padding=(16, 10))
+            frame.pack(fill="x")
+            frame.columnconfigure(1, weight=1)
+            return frame
+
+        def line(frame, n, label, widget, button=None):
+            ttk.Label(frame, text=label, width=17).grid(row=n, column=0, sticky="w", pady=5)
+            widget.grid(row=n, column=1, columnspan=1 if button else 2, sticky="ew", padx=(8, 0))
+            if button:
+                button.grid(row=n, column=2, sticky="ew", padx=(12, 0))
+
+        languages = card("Languages")
+        self.source = ttk.Combobox(languages, values=names, state="readonly")
+        line(languages, 0, "Translate from", self.source)
+        self.target = ttk.Combobox(languages, values=names, state="readonly")
+        line(languages, 1, "Translate to", self.target)
+        game = card("Game")
+        self.obs_source = ttk.Combobox(game)
+        line(game, 0, "Source in OBS", self.obs_source, ttk.Button(game, text="Refresh", width=10, command=self.refresh))
+        self.area = ttk.Label(game)
+        line(game, 1, "Areas to read", self.area, ttk.Button(game, text="Choose...", width=10, command=self.choose_area))
+        screen = card("On screen")
+        self.look_label = ttk.Label(screen, wraplength=440)
+        line(screen, 0, "Look", self.look_label, ttk.Button(screen, text="Edit...", width=10,
+                                                            command=lambda: self.editor.top.lift() if self.editor else StyleEditor(self)))
+        self.key = ttk.Label(screen)
+        line(screen, 1, "Show/hide key", self.key, ttk.Button(screen, text="Set...", width=10, command=lambda: KeyPicker(self)))
         self.auto = tk.BooleanVar(value=self.s["start_automatically"])
-        ttk.Checkbutton(top, text="Start translating when this program opens", variable=self.auto,
-                        command=self.remember).grid(row=6, column=0, columnspan=3, sticky="w", pady=4)
-        self.button = ttk.Button(top, text="Start", command=self.toggle)
-        self.button.grid(row=7, column=0, sticky="w", pady=(10, 0))
-        self.status = ttk.Label(top, text="Stopped")
-        self.status.grid(row=7, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
-        frame = ttk.Frame(root, padding=(12, 0, 12, 12))
+        ttk.Checkbutton(screen, text="Start translating when this program opens", variable=self.auto, style="Switch.TCheckbutton",
+                        command=self.remember).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 4))
+        action = ttk.Frame(page)
+        action.pack(fill="x", pady=(18, 0))
+        self.button = ttk.Button(action, text="Start", width=14, style="Accent.TButton", command=self.toggle)
+        self.button.pack(side="left")
+        self.status = ttk.Label(action, text="Stopped", foreground=muted)
+        self.status.pack(side="left", padx=14)
+        ttk.Label(page, text="Activity", font="SunValleyBodyStrongFont").pack(anchor="w", pady=(16, 6))
+        frame = ttk.Frame(page)
         frame.pack(fill="both", expand=True)
-        self.text = tk.Text(frame, height=14, wrap="word", state="disabled")
+        mono = "Cascadia Mono" if "Cascadia Mono" in tkfont.families(root) else "Consolas"
+        colors = COLORS[THEME]
+        self.text = tk.Text(frame, height=9, wrap="word", state="disabled", relief="flat", borderwidth=0, padx=12, pady=8,
+                            font=(mono, 9), bg=colors["field"], fg=colors["fg"], highlightthickness=1,
+                            highlightbackground=colors["line"], highlightcolor=colors["line"], selectbackground="#2f60d8")
         bar = ttk.Scrollbar(frame, command=self.text.yview)
         self.text.configure(yscrollcommand=bar.set)
-        bar.pack(side="right", fill="y")
+        bar.pack(side="right", fill="y", padx=(6, 0))
         self.text.pack(fill="both", expand=True)
 
         self.source.set(next(label for label, code in self.labels.items() if code == self.s["source_language"]))
         self.target.set(next(label for label, code in self.labels.items() if code == self.s["target_language"]))
         self.obs_source.set(self.s["obs_source"])
-        self.opacity.set(self.s["opacity"] * 100)
-        self.shade(self.s["opacity"] * 100)
         self.show_area()
+        self.show_look()
         for box in (self.source, self.target, self.obs_source):
             box.bind("<<ComboboxSelected>>", self.changed)
         root.protocol("WM_DELETE_WINDOW", self.close)
+        themed(root)
+        root.minsize(root.winfo_reqwidth(), root.winfo_reqheight())
         root.after(100, self.pump)
         self.listen_for_key()
         self.refresh()
@@ -765,11 +1006,15 @@ Overlay connection: ws://127.0.0.1:{self.s['port']}
 The program bundles Python, RapidOCR with the PP-OCR models, ONNX Runtime with DirectML, OpenCV, NumPy, websockets and other packages, each under its own license. See {short_path(folder / 'THIRD_PARTY_NOTICES.md')} and the licenses folder next to the program.
 """)
 
-    def shade(self, value):
-        self.s["opacity"] = round(float(value)) / 100
-        self.percent.configure(text=f"{round(float(value))} %")
-        if self.translator:
-            self.translator.s["opacity"] = self.s["opacity"]
+    def show_look(self):
+        st = self.s["style"]
+        own = sum(1 for region in self.s["regions"] if region["style"])
+        sources = len(self.s["overlays"])
+        size = f"{st['size']}\u00a0px" if st["size"] else "size of the original"
+        text = f"{st['font']}, {size}, background {round(st['opacity'] * 100)}\u00a0%"
+        more = [f"{own} area{'s' if own > 1 else ''} with a look of its own"] if own else []
+        more += [f"{sources} OBS sources"] if sources > 1 else []
+        self.look_label.configure(text=text + ("\n" + ", ".join(more) if more else ""))
 
     def remember(self):
         self.s["start_automatically"] = self.auto.get()
@@ -799,7 +1044,7 @@ The program bundles Python, RapidOCR with the PP-OCR models, ONNX Runtime with D
         while user.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
             if message.message == 0x0312:
                 try:
-                    if asyncio.run(toggle_overlay(self.s["overlay_source"])) is None:
+                    if asyncio.run(toggle_overlays([overlay["name"] for overlay in self.s["overlays"]])) is None:
                         log("There is nothing to show or hide yet. Press Start first.")
                 except (Problem, OSError, websockets.WebSocketException):
                     log("The key was pressed, but OBS is not reachable.")
@@ -807,7 +1052,11 @@ The program bundles Python, RapidOCR with the PP-OCR models, ONNX Runtime with D
 
     def show_area(self):
         count = len(self.s["regions"])
-        self.area.configure(text="Whole picture" if not count else "1 area" if count == 1 else f"{count} areas")
+        moved = sum(1 for region in self.s["regions"] if region["display"])
+        text = "Whole picture" if not count else "1 area" if count == 1 else f"{count} areas"
+        self.area.configure(text=text + (f", {moved} shown elsewhere" if moved else ""))
+        if self.editor:
+            self.editor.close()
 
     def choose_area(self):
         source = self.obs_source.get().strip()
@@ -852,6 +1101,7 @@ The program bundles Python, RapidOCR with the PP-OCR models, ONNX Runtime with D
     def work(self):
         self.loop = asyncio.new_event_loop()
         self.translator = Translator(dict(self.s), self.file.parent)
+        self.translator.sample = self.sample
         self.task = self.loop.create_task(self.translator.serve())
         try:
             self.loop.run_until_complete(self.task)
@@ -915,21 +1165,33 @@ class AreaPicker:
     def __init__(self, window, picture):
         self.window = window
         self.top = top = tk.Toplevel(window.root)
-        top.title("Area to read")
+        top.title("Areas to read")
         top.resizable(False, False)
         top.transient(window.root)
         self.image = tk.PhotoImage(data=picture)
         self.w, self.h = self.image.width(), self.image.height()
-        ttk.Label(top, text="Drag a rectangle around each part you want translated. With no rectangle the whole picture is read.",
-                  padding=8).pack(anchor="w")
+        ttk.Label(top, padding=8, text="Drag a rectangle around each part you want translated (yellow). With no rectangle the whole "
+                                       "picture is read.\nTo show the translation of an area somewhere else, choose the area below and "
+                                       "drag the place where it should be shown (blue).").pack(anchor="w")
         self.canvas = tk.Canvas(top, width=self.w, height=self.h, highlightthickness=0, cursor="crosshair")
         self.canvas.pack(padx=8)
         self.canvas.create_image(0, 0, image=self.image, anchor="nw")
-        self.boxes = [[x0 * self.w, y0 * self.h, x1 * self.w, y1 * self.h] for x0, y0, x1, y1 in window.s["regions"]]
+        scale = lambda box: [box[0] * self.w, box[1] * self.h, box[2] * self.w, box[3] * self.h]
+        self.boxes = [scale(region["box"]) for region in window.s["regions"]]
+        self.displays = [scale(region["display"]) if region["display"] else None for region in window.s["regions"]]
         self.current = None
         self.canvas.bind("<ButtonPress-1>", self.press)
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.release)
+        mode = ttk.Frame(top, padding=(8, 8, 8, 0))
+        mode.pack(fill="x")
+        self.mode = tk.StringVar(value="read")
+        ttk.Radiobutton(mode, text="Draw areas to read", variable=self.mode, value="read").pack(side="left")
+        ttk.Radiobutton(mode, text="Draw where area", variable=self.mode, value="show").pack(side="left", padx=(16, 4))
+        self.which = ttk.Combobox(mode, state="readonly", width=4)
+        self.which.pack(side="left")
+        ttk.Label(mode, text="is shown").pack(side="left", padx=(4, 12))
+        ttk.Button(mode, text="Show it where it is read", command=self.same_place).pack(side="left")
         buttons = ttk.Frame(top, padding=8)
         buttons.pack(fill="x")
         ttk.Button(buttons, text="Use", command=self.use).pack(side="left")
@@ -937,14 +1199,29 @@ class AreaPicker:
         ttk.Button(buttons, text="Remove all", command=self.remove_all).pack(side="left")
         ttk.Button(buttons, text="Cancel", command=top.destroy).pack(side="right")
         self.draw()
+        themed(top)
         top.grab_set()
 
     def draw(self):
         self.canvas.delete("box")
-        for number, box in enumerate(self.boxes + ([self.current] if self.current else []), 1):
+        numbers = [str(n) for n in range(1, len(self.boxes) + 1)]
+        self.which.configure(values=numbers)
+        if numbers and self.which.get() not in numbers:
+            self.which.set(numbers[-1])
+        drawing = self.current if self.mode.get() == "read" else None
+        for number, box in enumerate(self.boxes + ([drawing] if drawing else []), 1):
             self.canvas.create_rectangle(*box, outline="#ffcc00", width=3, tags="box")
             self.canvas.create_text(box[0] + 7, box[1] + 4, text=str(number), anchor="nw", fill="#ffcc00",
                                     font=("Segoe UI", 12, "bold"), tags="box")
+        for number, (box, shown) in enumerate(zip(self.boxes, self.displays), 1):
+            if self.current and self.mode.get() == "show" and str(number) == self.which.get():
+                shown = self.current
+            if shown:
+                self.canvas.create_line((box[0] + box[2]) / 2, (box[1] + box[3]) / 2, (shown[0] + shown[2]) / 2, (shown[1] + shown[3]) / 2,
+                                        fill="#33ccff", width=2, arrow="last", tags="box")
+                self.canvas.create_rectangle(*shown, outline="#33ccff", width=3, dash=(6, 4), tags="box")
+                self.canvas.create_text(shown[0] + 7, shown[1] + 4, text=str(number), anchor="nw", fill="#33ccff",
+                                        font=("Segoe UI", 12, "bold"), tags="box")
 
     def press(self, e):
         self.start = (e.x, e.y)
@@ -955,25 +1232,287 @@ class AreaPicker:
         self.draw()
 
     def release(self, _):
-        if self.current and self.current[2] - self.current[0] >= 0.05 * self.w and self.current[3] - self.current[1] >= 0.03 * self.h:
+        big = self.current and self.current[2] - self.current[0] >= 0.05 * self.w and self.current[3] - self.current[1] >= 0.03 * self.h
+        if big and self.mode.get() == "read":
             self.boxes.append(self.current)
+            self.displays.append(None)
+        elif big and self.which.get():
+            self.displays[int(self.which.get()) - 1] = self.current
         self.current = None
         self.draw()
 
+    def same_place(self):
+        if self.which.get():
+            self.displays[int(self.which.get()) - 1] = None
+            self.draw()
+
     def remove_last(self):
         del self.boxes[-1:]
+        del self.displays[-1:]
         self.draw()
 
     def remove_all(self):
-        self.boxes = []
+        self.boxes, self.displays = [], []
         self.draw()
 
     def use(self):
-        self.window.s["regions"] = [[round(x0 / self.w, 3), round(y0 / self.h, 3), round(x1 / self.w, 3), round(y1 / self.h, 3)]
-                                    for x0, y0, x1, y1 in self.boxes]
+        before = {tuple(region["box"]): region for region in self.window.s["regions"]}
+        unscale = lambda b: [round(b[0] / self.w, 3), round(b[1] / self.h, 3), round(b[2] / self.w, 3), round(b[3] / self.h, 3)]
+        regions = []
+        for box, shown in zip(self.boxes, self.displays):
+            box = unscale(box)
+            old = before.get(tuple(box), {})
+            regions.append({"box": box, "style": old.get("style"), "display": unscale(shown) if shown else None, "overlay": old.get("overlay", 0)})
+        self.window.s["regions"] = regions
         self.top.destroy()
         self.window.show_area()
+        self.window.show_look()
         self.window.changed()
+
+
+class StyleEditor:
+    def __init__(self, window):
+        self.window = window
+        window.editor = self
+        self.loading = False
+        self.top = top = tk.Toplevel(window.root)
+        top.title("Look of translations")
+        top.resizable(False, False)
+        top.transient(window.root)
+        f = ttk.Frame(top, padding=16)
+        f.pack(fill="both")
+        f.columnconfigure(1, weight=1)
+        count = len(window.s["regions"])
+        ttk.Label(f, text="Settings for").grid(row=0, column=0, sticky="w", pady=4)
+        self.target = ttk.Combobox(f, state="readonly",
+                                   values=["All areas (default look)" if count else "Whole picture"] + [f"Area {n}" for n in range(1, count + 1)])
+        self.target.current(0)
+        self.target.bind("<<ComboboxSelected>>", lambda e: self.load())
+        self.target.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        self.default = tk.BooleanVar()
+        self.default_box = ttk.Checkbutton(f, text="Use the default look for this area", variable=self.default, command=self.switch)
+        self.default_box.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=4)
+
+        ttk.Label(f, text="Font").grid(row=2, column=0, sticky="w", pady=4)
+        self.font = ttk.Combobox(f, height=20, values=sorted({name for name in tkfont.families(top) if not name.startswith("@")}))
+        self.font.grid(row=2, column=1, sticky="ew", padx=(8, 0))
+        for event in ("<<ComboboxSelected>>", "<Return>", "<FocusOut>"):
+            self.font.bind(event, lambda e: self.apply())
+
+        ttk.Label(f, text="Size").grid(row=3, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=3, column=1, sticky="w", padx=(8, 0))
+        self.fixed = tk.BooleanVar()
+        self.auto_size = ttk.Radiobutton(row, text="Size of the original text", variable=self.fixed, value=False, command=self.apply)
+        self.auto_size.pack(side="left")
+        self.fixed_size = ttk.Radiobutton(row, text="Fixed:", variable=self.fixed, value=True, command=self.apply)
+        self.fixed_size.pack(side="left", padx=(12, 4))
+        self.size = ttk.Spinbox(row, from_=8, to=150, width=5, command=self.apply)
+        self.size.bind("<KeyRelease>", lambda e: self.apply())
+        self.size.pack(side="left")
+        ttk.Label(row, text="px (in a 1080p picture)").pack(side="left", padx=(4, 0))
+
+        ttk.Label(f, text="Style").grid(row=4, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=4, column=1, sticky="w", padx=(8, 0))
+        self.bold, self.italic = tk.BooleanVar(), tk.BooleanVar()
+        self.bold_box = ttk.Checkbutton(row, text="Bold", variable=self.bold, command=self.apply)
+        self.bold_box.pack(side="left")
+        self.italic_box = ttk.Checkbutton(row, text="Italic", variable=self.italic, command=self.apply)
+        self.italic_box.pack(side="left", padx=(12, 0))
+
+        ttk.Label(f, text="Text colour").grid(row=5, column=0, sticky="w", pady=4)
+        self.color = ttk.Button(f, width=10, compound="left", command=lambda: self.pick("color"))
+        self.color.grid(row=5, column=1, sticky="w", padx=(8, 0))
+
+        ttk.Label(f, text="Background").grid(row=6, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=6, column=1, sticky="w", padx=(8, 0))
+        self.background = ttk.Button(row, width=10, compound="left", command=lambda: self.pick("background"))
+        self.background.pack(side="left")
+        ttk.Label(row, text="opacity").pack(side="left", padx=(12, 4))
+        self.opacity = ttk.Scale(row, from_=0, to=100, length=180, command=lambda v: self.apply())
+        self.opacity.pack(side="left")
+        self.percent = ttk.Label(row, width=6)
+        self.percent.pack(side="left", padx=(6, 0))
+
+        ttk.Label(f, text="Outline").grid(row=7, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=7, column=1, sticky="w", padx=(8, 0))
+        self.outline = ttk.Spinbox(row, from_=0, to=8, width=4, command=self.apply)
+        self.outline.bind("<KeyRelease>", lambda e: self.apply())
+        self.outline.pack(side="left")
+        ttk.Label(row, text="px, colour").pack(side="left", padx=(4, 6))
+        self.outline_color = ttk.Button(row, width=10, compound="left", command=lambda: self.pick("outline_color"))
+        self.outline_color.pack(side="left")
+
+        ttk.Label(f, text="Alignment").grid(row=8, column=0, sticky="w", pady=4)
+        self.align = ttk.Combobox(f, state="readonly", width=14, values=list(ALIGN.values()))
+        self.align.bind("<<ComboboxSelected>>", lambda e: self.apply())
+        self.align.grid(row=8, column=1, sticky="w", padx=(8, 0))
+
+        self.stage = tk.Frame(f, bg="#3d4650", height=110, width=560)
+        self.stage.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(12, 4))
+        self.stage.pack_propagate(False)
+        self.sample = tk.Label(self.stage, text=SAMPLE, padx=10, pady=2)
+        self.sample.pack(expand=True)
+        ttk.Label(f, text="While translating, OBS shows a sample translation with this look as long as this window is open.\n"
+                          "Opacity and outline are shown exactly only in OBS.", foreground=COLORS[THEME]["muted"]).grid(
+            row=10, column=0, columnspan=2, sticky="w")
+        place = ttk.Frame(top, padding=(16, 0, 16, 10))
+        place.pack(fill="x")
+        ttk.Label(place, text="Shown in OBS source").pack(side="left")
+        self.overlay = ttk.Combobox(place, state="readonly", width=28)
+        self.overlay.bind("<<ComboboxSelected>>", lambda e: self.choose_overlay())
+        self.overlay.pack(side="left", padx=8)
+        self.new_button = ttk.Button(place, text="New source...", command=self.new_overlay)
+        self.new_button.pack(side="left")
+        self.remove_button = ttk.Button(place, text="Remove source", command=self.remove_overlay)
+        self.remove_button.pack(side="left", padx=(8, 0))
+        buttons = ttk.Frame(top, padding=(16, 0, 16, 16))
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Original look", command=self.reset).pack(side="left")
+        ttk.Button(buttons, text="Close", command=self.close).pack(side="right")
+        self.controls = [self.font, self.auto_size, self.fixed_size, self.size, self.bold_box, self.italic_box, self.color,
+                         self.background, self.opacity, self.outline, self.outline_color, self.align]
+        top.protocol("WM_DELETE_WINDOW", self.close)
+        self.load()
+        themed(top)
+
+    def area(self):
+        return self.target.current() - 1
+
+    def own(self):
+        return self.area() < 0 or self.window.s["regions"][self.area()]["style"] is not None
+
+    def style(self):
+        return self.window.s["regions"][self.area()]["style"] if self.area() >= 0 and self.own() else self.window.s["style"]
+
+    def load(self):
+        self.loading = True
+        st = self.style()
+        if self.area() < 0:
+            self.default_box.state(["disabled"])
+            self.default.set(False)
+        else:
+            self.default_box.state(["!disabled"])
+            self.default.set(not self.own())
+        self.font.set(st["font"])
+        self.fixed.set(st["size"] > 0)
+        self.size.set(st["size"] or 36)
+        self.bold.set(st["bold"])
+        self.italic.set(st["italic"])
+        self.opacity.set(st["opacity"] * 100)
+        self.outline.set(st["outline"])
+        self.align.set(ALIGN[st["align"]])
+        for widget in self.controls:
+            widget.state(["!disabled" if self.own() else "disabled"])
+        names = [overlay["name"] for overlay in self.window.s["overlays"]]
+        self.overlay.configure(values=names)
+        if self.area() >= 0:
+            self.overlay.current(self.window.s["regions"][self.area()]["overlay"])
+        else:
+            self.overlay.set(names[0] if not self.window.s["regions"] else "chosen for each area")
+        for widget in (self.overlay, self.new_button):
+            widget.state(["!disabled" if self.area() >= 0 else "disabled"])
+        self.remove_button.state(["!disabled" if self.area() >= 0 and self.overlay.current() > 0 else "disabled"])
+        self.loading = False
+        self.show()
+
+    def choose_overlay(self):
+        self.window.s["regions"][self.area()]["overlay"] = self.overlay.current()
+        save_settings(self.window.file, self.window.s)
+        self.load()
+
+    def new_overlay(self):
+        names = [overlay["name"] for overlay in self.window.s["overlays"]]
+        name = (ask_text(self.top, "New OBS source", "Name of the new browser source for translations:",
+                         f"Translation overlay {len(names) + 1}") or "").strip()
+        if not name:
+            return
+        if name in names:
+            messagebox.showinfo("OBS Screen Translator", "A source with this name is already in the list.", parent=self.top)
+            return
+        self.window.s["overlays"].append({"name": name})
+        self.window.s["regions"][self.area()]["overlay"] = len(self.window.s["overlays"]) - 1
+        self.window.show_look()
+        self.load()
+        self.window.changed()
+
+    def remove_overlay(self):
+        n = self.overlay.current()
+        overlays = self.window.s["overlays"]
+        if n <= 0 or not messagebox.askyesno("OBS Screen Translator", f'Remove the source "{overlays[n]["name"]}" from OBS? Its areas go '
+                                             f'back to "{overlays[0]["name"]}".', parent=self.top):
+            return
+        name = overlays.pop(n)["name"]
+        for region in self.window.s["regions"]:
+            region["overlay"] = 0 if region["overlay"] == n else region["overlay"] - (region["overlay"] > n)
+        threading.Thread(target=remove_source, args=(name,), daemon=True).start()
+        self.window.show_look()
+        self.load()
+        self.window.changed()
+
+    def apply(self):
+        if self.loading or not self.own():
+            return
+        st = self.style()
+        st.update(font=self.font.get().strip() or st["font"], size=number(self.size.get(), 8, 150, 36) if self.fixed.get() else 0,
+                  bold=self.bold.get(), italic=self.italic.get(), opacity=round(float(self.opacity.get())) / 100,
+                  outline=number(self.outline.get(), 0, 8, 0), align=list(ALIGN)[max(self.align.current(), 0)])
+        save_settings(self.window.file, self.window.s)
+        self.show()
+
+    def pick(self, name):
+        chosen = colorchooser.askcolor(self.style()[name], parent=self.top, title="Choose a colour")[1]
+        if chosen:
+            self.style()[name] = chosen
+            save_settings(self.window.file, self.window.s)
+            self.show()
+
+    def switch(self):
+        region = self.window.s["regions"][self.area()]
+        region["style"] = None if self.default.get() else dict(self.window.s["style"])
+        save_settings(self.window.file, self.window.s)
+        self.load()
+
+    def reset(self):
+        if self.own():
+            self.style().update(STYLE)
+            save_settings(self.window.file, self.window.s)
+            self.load()
+
+    def show(self):
+        st = self.style()
+        for button, name in ((self.color, "color"), (self.background, "background"), (self.outline_color, "outline_color")):
+            button.image = tk.PhotoImage(width=16, height=16)
+            button.image.put(COLORS[THEME]["line"], to=(0, 0, 16, 16))
+            button.image.put(st[name], to=(1, 1, 15, 15))
+            button.configure(image=button.image, text=f" {st[name]}")
+        self.percent.configure(text=f"{round(st['opacity'] * 100)} %")
+        stage = (0x3d, 0x46, 0x50)
+        mixed = "#%02x%02x%02x" % tuple(round(int(st["background"][1 + 2 * i:3 + 2 * i], 16) * st["opacity"] + stage[i] * (1 - st["opacity"]))
+                                        for i in range(3))
+        self.sample.configure(font=tkfont.Font(family=st["font"], size=-(st["size"] or 36), weight="bold" if st["bold"] else "normal",
+                                               slant="italic" if st["italic"] else "roman"), fg=st["color"], bg=mixed)
+        self.window.show_look()
+        self.window.sample = self.area()
+        if self.window.translator:
+            self.window.translator.sample = self.area()
+
+    def close(self):
+        self.window.sample = None
+        if self.window.translator:
+            self.window.translator.sample = None
+        self.window.editor = None
+        self.top.destroy()
+
+
+def number(text, low, high, fallback):
+    try:
+        return min(max(int(float(text)), low), high)
+    except ValueError:
+        return fallback
 
 
 class Page:
@@ -981,20 +1520,30 @@ class Page:
         top = tk.Toplevel(root)
         top.title(title)
         top.transient(root)
-        frame = ttk.Frame(top, padding=(12, 12, 12, 0))
+        frame = ttk.Frame(top, padding=(16, 16, 16, 0))
         frame.pack(fill="both", expand=True)
-        view = tk.Text(frame, width=96, height=34, wrap="word", padx=10, pady=6, relief="flat", font=("Segoe UI", 10),
-                       spacing1=2, spacing3=2)
+        colors = COLORS[THEME]
+        view = tk.Text(frame, width=92, height=32, wrap="word", padx=14, pady=10, relief="flat", font="SunValleyBodyFont",
+                       spacing1=2, spacing3=2, bg=colors["field"], fg=colors["fg"], highlightthickness=1,
+                       highlightbackground=colors["line"], highlightcolor=colors["line"], borderwidth=0)
         bar = ttk.Scrollbar(frame, command=view.yview)
         view.configure(yscrollcommand=bar.set)
         bar.pack(side="right", fill="y")
         view.pack(fill="both", expand=True)
-        view.tag_configure("heading", font=("Segoe UI", 12, "bold"), spacing1=4, spacing3=4)
+        view.tag_configure("heading", font="SunValleySubtitleFont", spacing1=6, spacing3=4)
+        view.tag_configure("item", lmargin2=tkfont.Font(root=root, name="SunValleyBodyFont", exists=True).measure("1.  "))
+        view.tag_configure("strong", font="SunValleyBodyStrongFont")
         for line in text.split("\n"):
-            heading = line.startswith("# ")
-            view.insert("end", (line[2:] if heading else line) + "\n", "heading" if heading else ())
+            if line.startswith("# "):
+                view.insert("end", line[2:] + "\n", "heading")
+                continue
+            tags = ("item",) if line.startswith("- ") or re.match(r"\d+\. ", line) else ()
+            for n, part in enumerate(re.sub(r"^- ", "\u2022  ", line).split("**")):
+                view.insert("end", part, tags + (("strong",) if n % 2 else ()))
+            view.insert("end", "\n", tags)
         view.configure(state="disabled")
-        ttk.Button(top, text="Close", command=top.destroy).pack(anchor="e", padx=12, pady=12)
+        ttk.Button(top, text="Close", command=top.destroy).pack(anchor="e", padx=16, pady=16)
+        themed(top)
 
 
 class KeyPicker:
@@ -1011,6 +1560,7 @@ class KeyPicker:
         ttk.Button(buttons, text="No key", takefocus=False, command=lambda: self.use(None)).pack(side="left")
         ttk.Button(buttons, text="Cancel", takefocus=False, command=top.destroy).pack(side="right")
         top.bind("<KeyPress>", self.press)
+        themed(top)
         top.grab_set()
         top.focus_set()
 

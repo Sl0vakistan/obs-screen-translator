@@ -18,6 +18,7 @@ program folder, and copies the license texts shipped by the packages next to it.
 | [OpenCV](https://github.com/opencv/opencv) (`opencv-python-headless`) | decoding and drawing images | Apache-2.0; the FFmpeg video library that comes with the package is left out of the program |
 | [NumPy](https://github.com/numpy/numpy) | image arrays | BSD-3-Clause and others listed by the package |
 | [websockets](https://github.com/python-websockets/websockets) | connection to OBS and to the overlay | BSD-3-Clause |
+| [Sun Valley ttk theme](https://github.com/rdbende/Sun-Valley-ttk-theme) (`sv-ttk`) | look of the windows | MIT |
 | [Shapely](https://github.com/shapely/shapely) | geometry of text boxes | BSD-3-Clause; the package ships GEOS under LGPL-2.1 |
 | Pillow, pyclipper, OmegaConf, PyYAML, requests, urllib3, certifi, charset-normalizer, idna, tqdm, colorlog, six and others | dependencies of the above | see `licenses\README.txt` |
 | [PyInstaller](https://pyinstaller.org/) bootloader | starting the bundled program | GPL-2.0-or-later with an exception that allows distributing bundled programs under any license |
