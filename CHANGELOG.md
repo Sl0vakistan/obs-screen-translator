@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-11-20
+
+- Several areas to read: in the *Area to read* dialog you can draw any number of rectangles; *Remove last* and
+  *Remove all* take them away, and with no rectangle the whole picture is read. All areas are put into one picture and
+  read in one pass.
+- The setting is now `regions`, a list of areas. A `region` from version 0.3.0 is converted on the first start.
+- The window says that it is preparing the translation model, which can take a while after the model was unloaded.
+
 ## 0.3.0 - 2026-11-20
 
 - Area to read: *Choose...* in the window shows the current picture of the game source and lets you drag a rectangle

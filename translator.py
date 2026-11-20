@@ -23,7 +23,7 @@ import numpy as np
 import websockets
 from rapidocr import RapidOCR
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE
@@ -35,7 +35,7 @@ DEFAULTS = {
     "create_overlay_source": True,
     "source_language": "en",
     "target_language": "sk",
-    "region": [0, 0, 1, 1],
+    "regions": [],
     "context": "The text is shown on screen in a video game (subtitles of spoken dialogue, messages, hints, menu items). "
                "Leave names of people, places, brands and anything that is not a real word exactly as written.",
     "model": "translategemma:12b",
@@ -59,6 +59,9 @@ class Problem(Exception):
 def load_settings(path):
     stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     settings = {**DEFAULTS, **stored}
+    single = settings.pop("region", None)
+    if single and single != [0, 0, 1, 1] and not settings["regions"]:
+        settings["regions"] = [single]
     if settings != stored:
         save_settings(path, settings)
     return settings
@@ -174,6 +177,7 @@ class Translator:
         return urllib.request.urlopen(request, timeout=timeout)
 
     def prepare_model(self):
+        log("preparing the translation model, this can take a while...")
         try:
             self.ollama("/api/version").close()
         except OSError:
@@ -210,12 +214,22 @@ class Translator:
 
     def read(self, frame):
         h, w = frame.shape[:2]
-        left, top, right, bottom = (int(a * b) for a, b in zip(self.s["region"], (w, h, w, h)))
-        r = text_reader(self.s)(frame[top:bottom, left:right])
+        picture, strips = frame, [(0, h, 0, 0)]
+        if self.s["regions"]:
+            areas = [tuple(int(a * b) for a, b in zip(region, (w, h, w, h))) for region in self.s["regions"]]
+            picture = np.zeros((sum(b - t for l, t, r, b in areas) + 16 * (len(areas) - 1), max(r - l for l, t, r, b in areas), 3), np.uint8)
+            strips, y = [], 0
+            for l, t, r, b in areas:
+                picture[y:y + b - t, :r - l] = frame[t:b, l:r]
+                strips.append((y, y + b - t, l, t))
+                y += b - t + 16
+        r = text_reader(self.s)(picture)
         lines = []
         for box, text, score in zip(r.boxes, r.txts, r.scores) if r.txts else ():
-            x0, y0 = float((box[:, 0].min() + left) / w), float((box[:, 1].min() + top) / h)
-            x1, y1 = float((box[:, 0].max() + left) / w), float((box[:, 1].max() + top) / h)
+            middle = (box[:, 1].min() + box[:, 1].max()) / 2
+            start, _, left, top = min(strips, key=lambda s: max(s[0] - middle, middle - s[1], 0))
+            x0, y0 = float((box[:, 0].min() + left) / w), float((box[:, 1].min() - start + top) / h)
+            x1, y1 = float((box[:, 0].max() + left) / w), float((box[:, 1].max() - start + top) / h)
             if score >= self.s["min_score"] and (y1 - y0) * 1080 >= self.s["min_height"] and re.search(r"[^\W\d_]{3}", text):
                 lines.append((y0, x0, x1, y1, " ".join(text.split())))
         blocks = []
@@ -421,8 +435,8 @@ class Translator:
         started = time.perf_counter()
         blocks = self.read(frame)
         log(f"reading took {(time.perf_counter() - started) * 1000:.0f} ms, {len(blocks)} texts")
-        x0, y0, x1, y1 = self.s["region"]
-        cv2.rectangle(frame, (int(x0 * w), int(y0 * h)), (int(x1 * w) - 1, int(y1 * h) - 1), (0, 204, 255), 2)
+        for x0, y0, x1, y1 in self.s["regions"]:
+            cv2.rectangle(frame, (int(x0 * w), int(y0 * h)), (int(x1 * w) - 1, int(y1 * h) - 1), (0, 204, 255), 2)
         for b in blocks:
             cv2.rectangle(frame, (int(b.box[0] * w), int(b.box[1] * h)), (int(b.box[2] * w), int(b.box[3] * h)), (0, 255, 0), 2)
             log(f"  {b.text}\n    -> {self.translate([b.text])[0] or '(no translation)'}")
@@ -498,9 +512,8 @@ class Window:
         threading.Thread(target=work, daemon=True).start()
 
     def show_area(self):
-        x0, y0, x1, y1 = self.s["region"]
-        self.area.configure(text="Whole picture" if self.s["region"] == [0, 0, 1, 1] else
-                            f"{round((x1 - x0) * 100)} % of the width, {round((y1 - y0) * 100)} % of the height")
+        count = len(self.s["regions"])
+        self.area.configure(text="Whole picture" if not count else "1 area" if count == 1 else f"{count} areas")
 
     def choose_area(self):
         source = self.obs_source.get().strip()
@@ -601,37 +614,57 @@ class AreaPicker:
         top.transient(window.root)
         self.image = tk.PhotoImage(data=picture)
         self.w, self.h = self.image.width(), self.image.height()
-        ttk.Label(top, text="Drag a rectangle around the text you want translated.", padding=8).pack(anchor="w")
+        ttk.Label(top, text="Drag a rectangle around each part you want translated. With no rectangle the whole picture is read.",
+                  padding=8).pack(anchor="w")
         self.canvas = tk.Canvas(top, width=self.w, height=self.h, highlightthickness=0, cursor="crosshair")
         self.canvas.pack(padx=8)
         self.canvas.create_image(0, 0, image=self.image, anchor="nw")
-        x0, y0, x1, y1 = window.s["region"]
-        self.box = [x0 * self.w, y0 * self.h, x1 * self.w, y1 * self.h]
-        self.rect = self.canvas.create_rectangle(*self.box, outline="#ffcc00", width=3)
+        self.boxes = [[x0 * self.w, y0 * self.h, x1 * self.w, y1 * self.h] for x0, y0, x1, y1 in window.s["regions"]]
+        self.current = None
         self.canvas.bind("<ButtonPress-1>", self.press)
         self.canvas.bind("<B1-Motion>", self.drag)
+        self.canvas.bind("<ButtonRelease-1>", self.release)
         buttons = ttk.Frame(top, padding=8)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="Use this area", command=self.use).pack(side="left")
-        ttk.Button(buttons, text="Whole picture", command=lambda: self.finish([0, 0, 1, 1])).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Use", command=self.use).pack(side="left")
+        ttk.Button(buttons, text="Remove last", command=self.remove_last).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Remove all", command=self.remove_all).pack(side="left")
         ttk.Button(buttons, text="Cancel", command=top.destroy).pack(side="right")
+        self.draw()
         top.grab_set()
+
+    def draw(self):
+        self.canvas.delete("box")
+        for number, box in enumerate(self.boxes + ([self.current] if self.current else []), 1):
+            self.canvas.create_rectangle(*box, outline="#ffcc00", width=3, tags="box")
+            self.canvas.create_text(box[0] + 7, box[1] + 4, text=str(number), anchor="nw", fill="#ffcc00",
+                                    font=("Segoe UI", 12, "bold"), tags="box")
 
     def press(self, e):
         self.start = (e.x, e.y)
 
     def drag(self, e):
         x, y = min(max(e.x, 0), self.w), min(max(e.y, 0), self.h)
-        self.box = [min(self.start[0], x), min(self.start[1], y), max(self.start[0], x), max(self.start[1], y)]
-        self.canvas.coords(self.rect, *self.box)
+        self.current = [min(self.start[0], x), min(self.start[1], y), max(self.start[0], x), max(self.start[1], y)]
+        self.draw()
+
+    def release(self, _):
+        if self.current and self.current[2] - self.current[0] >= 0.05 * self.w and self.current[3] - self.current[1] >= 0.03 * self.h:
+            self.boxes.append(self.current)
+        self.current = None
+        self.draw()
+
+    def remove_last(self):
+        del self.boxes[-1:]
+        self.draw()
+
+    def remove_all(self):
+        self.boxes = []
+        self.draw()
 
     def use(self):
-        x0, y0, x1, y1 = self.box
-        if x1 - x0 >= 0.05 * self.w and y1 - y0 >= 0.03 * self.h:
-            self.finish([round(x0 / self.w, 3), round(y0 / self.h, 3), round(x1 / self.w, 3), round(y1 / self.h, 3)])
-
-    def finish(self, region):
-        self.window.s["region"] = region
+        self.window.s["regions"] = [[round(x0 / self.w, 3), round(y0 / self.h, 3), round(x1 / self.w, 3), round(y1 / self.h, 3)]
+                                    for x0, y0, x1, y1 in self.boxes]
         self.top.destroy()
         self.window.show_area()
         self.window.changed()

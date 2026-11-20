@@ -31,19 +31,20 @@ informácie > Spustiť aj tak*. Ak nepodpísaný inštalátor spúšťať nechce
 1. Spustite OBS a potom *OBS Screen Translator* z ponuky Štart.
 2. Vyberte jazyky v **Translate from** (z akého) a **Translate to** (do akého).
 3. V **Game source in OBS** vyberte zdroj s hrou. *Refresh* načíta zoznam zdrojov z OBS znova.
-4. Voliteľne **Area to read** (výrez). *Choose...* ukáže aktuálny obraz hry; myšou potiahnite obdĺžnik okolo časti, ktorú
-   chcete prekladať, napríklad len okolo titulkov, a stlačte *Use this area*. Text mimo obdĺžnika sa ignoruje.
-   *Whole picture* v tom istom okne vráti celý obraz.
+4. Voliteľne **Area to read** (oblasti na čítanie). *Choose...* ukáže aktuálny obraz hry; myšou potiahnite obdĺžnik
+   okolo každej časti, ktorú chcete prekladať, napríklad okolo titulkov a telefónu. Obdĺžnikov môže byť viac. Text mimo
+   nich sa ignoruje. *Remove last* odoberie posledný, *Remove all* všetky; bez obdĺžnika sa číta celý obraz. *Use*
+   výber potvrdí.
 5. Stlačte **Start**.
 
 Pri prvom spustení si program stiahne prekladový model (8,1 GB, raz) a do scény, ktorá práve ide do vysielania, pridá zdroj
 prehliadača *Translation overlay*. Okno vypisuje každý preložený text a čas, ktorý to trvalo.
 
 Jazyk zmeníte výberom iného v okne. Preklad sa v novom jazyku spustí sám, netreba ho predtým zastavovať. Každý jazyk má
-vlastné uložené preklady. Rovnako sa počas prekladu dá zmeniť výrez.
+vlastné uložené preklady. Rovnako sa počas prekladu dajú zmeniť oblasti.
 
-Menší výrez znamená menej čítania a menej prekladania. Najviac pomôže na obrazovkách plných textu a vtedy, keď vás zaujíma
-len jedna časť obrazu, napríklad titulky; pozri *Namerané*.
+Menšie oblasti znamenajú menej čítania a menej prekladania a žiadne preklady cez časti obrazu, ktoré vás nezaujímajú.
+Najviac pomôžu na obrazovkách plných textu; pozri *Namerané*.
 
 Program pracuje, len kým je zdroj prekladu viditeľný v scéne, ktorá ide do vysielania. Keď zdroj skryjete, prestane čítať
 aj prekladať. Na prepínanie jednou klávesou dajte v OBS (*Nastavenia > Klávesové skratky*) akciám *Zobraziť* a *Skryť* tohto
@@ -87,7 +88,7 @@ správne, nech vyberiete akýkoľvek jazyk.
 
 ## Nastavenia
 
-Jazyky, zdroj s hrou a výrez sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
+Jazyky, zdroj s hrou a oblasti na čítanie sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
 v `%APPDATA%\OBS Screen Translator` (pri spustení zo zdrojového kódu vedľa `translator.py`). Zmeny platia po novom spustení
 programu. Tabuľka všetkých položiek je v [README.md](README.md#settings). Najdôležitejšie:
 
@@ -119,6 +120,9 @@ Počítač s Ryzen 9 5950X a RTX 5080, snímka 1080p z plátna 4K, z angličtiny
 - Čítanie len pásu okolo titulkov (60 % šírky, 15 % výšky): 68 až 86 ms v hre a 58 až 68 ms na obrazovke menu, kde celá
   snímka v tom istom meraní trvala 255 až 269 ms. V hre je zisk malý, lebo väčšinu času zaberie hľadanie textu, nie jeho
   množstvo.
+- Viac oblastí sa poskladá vedľa seba do jedného obrázka a prečíta naraz. Merali sa len vtedy, keď grafiku zamestnávala
+  iná hra, čo všetky časy asi zdvojnásobilo: dve oblasti vtedy trvali rovnako ako celá snímka v hre (150 až 270 ms oproti
+  170 až 270 ms) a tri oblasti asi o štvrtinu menej na obrazovke menu (430 až 620 ms oproti 560 až 820 ms).
 - Preklad: titulok 0,5 až 1 s po objavení. Ollama pridáva ku každému volaniu asi 0,35 s, preto idú krátke nápisy v dávkach;
   12 položiek menu trvalo 1,3 s.
 - OBS nevynechal žiadnu vykreslenú snímku v žiadnom behu s približne 3000 snímkami.
@@ -126,12 +130,13 @@ Počítač s Ryzen 9 5950X a RTX 5080, snímka 1080p z plátna 4K, z angličtiny
 
 ## Čo sa skúšalo a čo nie
 
-Skúšalo sa: štart a zastavenie z okna, zmena cieľového jazyka počas prekladu, výber výrezu a návrat na celý obraz počas
-prekladu, zostavený aj nainštalovaný program proti bežiacemu OBS, vytvorenie zdroja prekladu, tichá inštalácia
+Skúšalo sa: štart a zastavenie z okna, zmena cieľového jazyka počas prekladu, výber jednej aj viacerých oblastí a návrat
+na celý obraz počas prekladu, zostavený aj nainštalovaný program proti bežiacemu OBS, vytvorenie zdroja prekladu, tichá inštalácia
 a odinštalovanie.
 
 Neskúšalo sa: počítač bez Ollamy alebo bez modelu (sťahovanie pri prvom spustení), čítanie textu na procesore v zostavenom
-programe, iná grafika než RTX 5080, Windows 10 a celé živé vysielanie.
+programe, iná grafika než RTX 5080, Windows 10 a celé živé vysielanie. Oblasti v skúškach kreslil skript, ktorý simuluje
+myš, nie ruka.
 
 ## Hranice
 

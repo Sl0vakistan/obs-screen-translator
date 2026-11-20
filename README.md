@@ -32,20 +32,21 @@ If you would rather not run an unsigned installer, run the program from source (
 1. Start OBS, then start *OBS Screen Translator* from the Start menu.
 2. Choose the languages in **Translate from** and **Translate to**.
 3. Choose your game in **Game source in OBS**. *Refresh* reads the list of sources from OBS again.
-4. Optional: **Area to read**. *Choose...* shows the current picture of the game; drag a rectangle around the part you
-   want translated, for example only the subtitles, and press *Use this area*. Text outside the rectangle is ignored.
-   *Whole picture* in the same dialog switches back.
+4. Optional: **Area to read**. *Choose...* shows the current picture of the game; drag a rectangle around each part you
+   want translated, for example the subtitles and the phone. You can draw several. Text outside the rectangles is
+   ignored. *Remove last* and *Remove all* take rectangles away; with no rectangle the whole picture is read. *Use*
+   confirms.
 5. Press **Start**.
 
 On the first start the program downloads the translation model (8.1 GB, once) and adds a browser source named *Translation
 overlay* to the scene that is on air. The window lists every translated text with the time it took.
 
 To change the language, pick another one in the window. Translation restarts in the new language by itself; you do not have
-to stop it first. Every language keeps its own stored translations. The area can be changed while translating in the same
+to stop it first. Every language keeps its own stored translations. The areas can be changed while translating in the same
 way.
 
-A smaller area means less to read and less to translate. It helps most on screens full of text and when you only care
-about one part of the picture, such as the subtitles; see *Measured*.
+Smaller areas mean less to read and less to translate, and no translations drawn over parts of the picture you do not
+care about. They help most on screens full of text; see *Measured*.
 
 The program works only while the overlay source is visible in the scene that is on air. Hide the source and the program
 stops reading and translating until you show it again. To switch it with one key, open *Settings > Hotkeys* in OBS and give
@@ -91,7 +92,7 @@ correctly yet, whatever language you choose.
 
 ## Settings
 
-The window covers the languages, the game source and the area to read. Everything else is in `settings.json`, created on the first start in
+The window covers the languages, the game source and the areas to read. Everything else is in `settings.json`, created on the first start in
 `%APPDATA%\OBS Screen Translator` (next to `translator.py` when you run from source). Changes apply after a restart of the
 program.
 
@@ -99,7 +100,7 @@ program.
 |---|---|---|
 | `obs_source` | empty | Name of the OBS source to read. Set in the window. |
 | `source_language`, `target_language` | `en`, `sk` | Language codes. Set in the window. |
-| `region` | `[0, 0, 1, 1]` | Part of the picture that is read: left, top, right and bottom edge as fractions of the frame. Set in the window. |
+| `regions` | `[]` | Parts of the picture that are read, each as left, top, right and bottom edge in fractions of the frame. Empty means the whole picture. Set in the window. |
 | `scenes` | `[]` | Scenes that get the overlay source when it is created. Empty means the scene that is on air at that moment. |
 | `overlay_source` | `Translation overlay` | Name of the browser source that draws the translations. |
 | `create_overlay_source` | `true` | Create the overlay source if it does not exist, and keep its address current. |
@@ -158,6 +159,10 @@ On a PC with a Ryzen 9 5950X and an RTX 5080, a 1080p frame from a 4K canvas, En
 - Reading only a band around the subtitles (60 % of the width, 15 % of the height): 68 to 86 ms in the game and 58 to 68 ms
   on the menu screen, where the whole frame took 255 to 269 ms in the same run. In the game the gain is small, because most
   of the time goes into finding text, not into the amount of it.
+- Several areas are put next to each other into one picture and read in one pass. They were measured only while the
+  graphics card was busy with another game, which about doubled all times: two areas then took as long as the whole frame
+  in the game (150 to 270 ms against 170 to 270 ms) and three areas about a quarter less on the menu screen (430 to 620 ms
+  against 560 to 820 ms).
 - Translation: a subtitle 0.5 to 1 s after it appears. Ollama adds about 0.35 s to every call, which is why short labels are
   sent in batches; 12 menu items took 1.3 s.
 - OBS dropped no rendered frames in any run of about 3000 frames.
@@ -165,12 +170,13 @@ On a PC with a Ryzen 9 5950X and an RTX 5080, a 1080p frame from a 4K canvas, En
 
 ## What was and was not tested
 
-Tested: starting and stopping from the window, changing the target language while translating, choosing an area and
-going back to the whole picture while translating, the built program and the installed program against a running OBS,
+Tested: starting and stopping from the window, changing the target language while translating, choosing one and several
+areas and going back to the whole picture while translating, the built program and the installed program against a running OBS,
 creation of the overlay source, silent install and uninstall.
 
 Not tested: a PC without Ollama or without the model (the download on the first start), reading text on the processor in
-the built program, a graphics card other than the RTX 5080, Windows 10, and a whole live broadcast.
+the built program, a graphics card other than the RTX 5080, Windows 10, and a whole live broadcast. The areas were drawn
+in the tests by a script that simulates the mouse, not by hand.
 
 ## Limits
 
