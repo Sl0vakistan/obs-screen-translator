@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0 - 2026-11-20
+
+The program sets up most things itself, so installing comes down to the installer and the Start button.
+
+- If the WebSocket server in OBS is off, the program offers to turn it on. It waits until OBS is closed, changes the
+  setting and keeps the previous one in `config.before-screen-translator.json`.
+- If Ollama is missing, the program offers to download it from ollama.com and install it. The downloaded installer is run
+  only if it carries Ollama's signature.
+- The game source is chosen automatically when the scene that is on air has exactly one capture card, game capture,
+  window capture or display capture.
+- On the first start the target language is the language of Windows.
+- **Show/hide key**: a key or key combination, set in the window, that shows and hides the translations from anywhere,
+  also from a Stream Deck. Stored as `hotkey`.
+- **Start translating when this program opens**. Stored as `start_automatically`.
+- **Background opacity**: a slider in the window, from no background (0 %) to solid black (100 %). It changes the
+  translations that are on screen at once. Stored as `opacity`; the `opacity` in the address of the overlay source is no
+  longer used.
+- **Help** menu: *Installation and setup* (a short guide in the program), *Details* (version, license, how it works,
+  where the settings and stored translations are), *Open the settings folder* and *Project page*.
+- The program waits for OBS and connects as soon as it runs; *Refresh* is no longer needed for that.
+- Closing the window unloads the translation model from the graphics card at once. Before, Ollama kept it loaded for
+  30 minutes after the last translation.
+
 ## 0.4.1 - 2026-11-20
 
 - Smaller installer. The build leaves out three parts the program never uses: the video library that comes with OpenCV,

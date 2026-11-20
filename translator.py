@@ -1,9 +1,12 @@
 import argparse
 import asyncio
 import base64
+import ctypes
+import ctypes.wintypes
 import difflib
 import hashlib
 import json
+import locale
 import os
 import pathlib
 import queue
@@ -11,19 +14,22 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
 import types
 import urllib.request
-from tkinter import ttk
+import webbrowser
+from tkinter import messagebox, ttk
 
 import cv2
 import numpy as np
 import websockets
 from rapidocr import RapidOCR
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
+PROJECT = "https://github.com/Sl0vakistan/obs-screen-translator"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE
@@ -36,6 +42,9 @@ DEFAULTS = {
     "source_language": "en",
     "target_language": "sk",
     "regions": [],
+    "start_automatically": False,
+    "hotkey": None,
+    "opacity": 0.85,
     "context": "The text is shown on screen in a video game (subtitles of spoken dialogue, messages, hints, menu items). "
                "Leave names of people, places, brands and anything that is not a real word exactly as written.",
     "model": "translategemma:12b",
@@ -49,6 +58,39 @@ DEFAULTS = {
     "port": 8777,
 }
 log = print
+ask = lambda question: False
+GUIDE = """# What you need
+- Windows 10 or 11 and OBS Studio from obsproject.com.
+- A graphics card with about 8 GB of free memory for the translation model, and about 10 GB of free disk space.
+
+# First start
+1. Start OBS once, then this program. The order does not matter: the program waits for OBS.
+2. If the WebSocket server in OBS is off, the program asks to turn it on. Close OBS when it says so and start OBS again. The previous OBS setting is kept in a backup file.
+3. If Ollama is missing, the program asks to download it from ollama.com and install it. Ollama runs the translation model.
+4. On the first Start the translation model (8.1 GB) is downloaded, once.
+
+# Setting up
+- Translate from / Translate to: the language of the game and the language of your viewers. The target starts as the language of Windows.
+- Game source in OBS: the source with the game. A single capture card in the scene that is on air is chosen by itself.
+- Area to read: optional rectangles around the parts to translate, for example the subtitles. With none the whole picture is read.
+- Background opacity: how dark the box behind a translation is, from none to solid black.
+- Show/hide key: one key that shows and hides the translations from any window, also from a Stream Deck.
+- Start translating when this program opens: no need to press Start next time.
+
+Then press Start. A browser source named Translation overlay appears in the scene that is on air. Keep it above the game.
+
+# During the stream
+- Hiding the Translation overlay source in OBS, or pressing the show/hide key, pauses reading and translating.
+- Changing a language or an area while translating restarts the translation by itself.
+- Keep this window open. Closing it removes the translations from the picture and unloads the translation model from the graphics card.
+
+# When something does not work
+- "Waiting for OBS": OBS is not running, or its WebSocket server is off (Tools > WebSocket Server Settings in OBS).
+- No translations on screen: the Translation overlay source is hidden, is not in the scene that is on air, or sits inside a nested scene.
+- Moving text stays untranslated until it stands still for a moment. This is on purpose: it skips signs and number plates.
+- The first translation after a break is late: the model is being loaded, which takes about 12 seconds.
+- Cyrillic, Arabic, Korean and other scripts are not read yet. Latin script and Chinese are.
+"""
 reader = None
 
 
@@ -56,8 +98,28 @@ class Problem(Exception):
     pass
 
 
+def short_path(path):
+    # The full path contains the Windows user name, which should not end up on a stream.
+    text = str(path)
+    for name in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+        value = os.environ.get(name)
+        if value and text.lower().startswith(value.lower()):
+            return f"%{name}%" + text[len(value):]
+    return text
+
+
+def system_language():
+    if sys.platform == "win32":
+        kernel = ctypes.windll.kernel32
+        for number in (kernel.GetUserDefaultLCID(), kernel.GetUserDefaultUILanguage()):
+            code = (locale.windows_locale.get(number) or "").split("_")[0]
+            if code in LANGUAGES and code != DEFAULTS["source_language"]:
+                return code
+    return DEFAULTS["target_language"]
+
+
 def load_settings(path):
-    stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"target_language": system_language()}
     settings = {**DEFAULTS, **stored}
     single = settings.pop("region", None)
     if single and single != [0, 0, 1, 1] and not settings["regions"]:
@@ -97,12 +159,36 @@ def text_reader(settings):
     return reader
 
 
+def obs_websocket_file():
+    files = [pathlib.Path(base).expanduser() / "obs-studio/plugin_config/obs-websocket/config.json"
+             for base in (os.environ.get("APPDATA"), "~/.config", "~/Library/Application Support") if base]
+    return next((f for f in files if f.exists()), files[0])
+
+
 def obs_websocket_config():
-    for base in (os.environ.get("APPDATA"), "~/.config", "~/Library/Application Support"):
-        path = pathlib.Path(base or "").expanduser() / "obs-studio/plugin_config/obs-websocket/config.json"
-        if base and path.exists():
-            return json.loads(path.read_text(encoding="utf-8-sig"))
-    raise Problem("OBS WebSocket settings not found. Start OBS once and enable Tools > WebSocket Server Settings > Enable WebSocket server.")
+    file = obs_websocket_file()
+    if not file.exists():
+        raise Problem("OBS WebSocket settings not found. Start OBS once and enable Tools > WebSocket Server Settings > Enable WebSocket server.")
+    return json.loads(file.read_text(encoding="utf-8-sig"))
+
+
+def obs_running():
+    return "obs64.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq obs64.exe", "/NH"], capture_output=True, text=True,
+                                         stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+
+
+def enable_obs_websocket():
+    # OBS reads this file only when it starts, so OBS must be closed. A missing password is generated by OBS itself.
+    file = obs_websocket_file()
+    config = {}
+    if file.exists():
+        config = json.loads(file.read_text(encoding="utf-8-sig"))
+        backup = file.with_name("config.before-screen-translator.json")
+        if not backup.exists():
+            shutil.copy2(file, backup)
+    config["server_enabled"] = True
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(json.dumps(config, indent=4) + "\n", encoding="utf-8")
 
 
 class OBS:
@@ -133,8 +219,69 @@ class OBS:
 async def obs_video_sources():
     obs = await OBS().connect()
     inputs = (await obs.request("GetInputList"))["inputs"]
+    scene = (await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]
+    in_scene = [i["sourceName"] for i in (await obs.request("GetSceneItemList", sceneName=scene))["sceneItems"]]
     await obs.ws.close()
-    return sorted(i["inputName"] for i in inputs if not re.search("audio|wasapi|pulse|alsa|browser|text", i["inputKind"]))
+    kinds = {i["inputName"]: i["inputKind"] for i in inputs}
+    names = sorted(n for n, kind in kinds.items() if not re.search("audio|wasapi|pulse|alsa|browser|text", kind))
+    return names, likely_game_source(kinds, in_scene)
+
+
+def likely_game_source(kinds, in_scene):
+    # The only capture card in the current scene, else the only game capture, and so on; with two of a kind nobody can tell.
+    for names in ([n for n in in_scene if n in kinds], list(kinds)):
+        for kind in ("dshow_input", "game_capture", "window_capture", "monitor_capture"):
+            found = [n for n in names if kinds[n] == kind]
+            if found:
+                return found[0] if len(found) == 1 else None
+
+
+async def toggle_overlay(name):
+    obs = await OBS().connect()
+    scenes = [(await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]]
+    scenes += [s["sceneName"] for s in (await obs.request("GetSceneList"))["scenes"] if s["sceneName"] != scenes[0]]
+    shown = None
+    for scene in scenes:
+        try:
+            item = (await obs.request("GetSceneItemId", sceneName=scene, sourceName=name))["sceneItemId"]
+        except RuntimeError:
+            continue
+        if shown is None:
+            shown = not (await obs.request("GetSceneItemEnabled", sceneName=scene, sceneItemId=item))["sceneItemEnabled"]
+        await obs.request("SetSceneItemEnabled", sceneName=scene, sceneItemId=item, sceneItemEnabled=shown)
+    await obs.ws.close()
+    return shown
+
+
+def install_ollama():
+    with urllib.request.urlopen("https://ollama.com/download/OllamaSetup.exe") as response:
+        total = int(response.headers["Content-Length"])
+        if not ask("Ollama, the program that runs the translation model, is not installed.\n\n"
+                   f"Download it from ollama.com ({total / 1e9:.1f} GB) and install it now?"):
+            raise Problem("Ollama is not installed. Get it from https://ollama.com/download, install it and press Start again.")
+        setup = pathlib.Path(tempfile.gettempdir()) / "OllamaSetup.exe"
+        log("downloading Ollama...")
+        with open(setup, "wb") as out:
+            done = shown = 0
+            while chunk := response.read(1 << 20):
+                out.write(chunk)
+                done += len(chunk)
+                if 100 * done // total >= shown + 10:
+                    shown = 100 * done // total // 10 * 10
+                    log(f"  {shown} %")
+    signature = subprocess.run(["powershell", "-NoProfile", "-Command", "$s = Get-AuthenticodeSignature -LiteralPath $env:OLLAMA_SETUP; "
+                                "$s.Status.ToString() + ' ' + $s.SignerCertificate.Subject"],
+                               env={**os.environ, "OLLAMA_SETUP": str(setup), "PSModulePath": ""}, capture_output=True, text=True,
+                               stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+    if not signature.startswith("Valid CN=Ollama Inc."):
+        setup.unlink()
+        raise Problem("The downloaded Ollama installer is not signed by Ollama, so it was not started. "
+                      "Install Ollama yourself from https://ollama.com/download and press Start again.")
+    log("installing Ollama...")
+    failed = subprocess.run([str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"]).returncode
+    setup.unlink()
+    if failed:
+        raise Problem("Installing Ollama failed. Install it yourself from https://ollama.com/download and press Start again.")
 
 
 async def obs_picture(source):
@@ -170,6 +317,7 @@ class Translator:
         self.cache_file = folder / f"cache_{hashlib.md5((settings['model'] + self.prompt).encode()).hexdigest()[:8]}.json"
         self.cache = json.loads(self.cache_file.read_text(encoding="utf-8")) if self.cache_file.exists() else {}
         self.obs = None
+        self.closed = False
 
     def ollama(self, path, body=None, timeout=60):
         request = urllib.request.Request(self.s["ollama_url"] + path, data=body and json.dumps(body).encode(),
@@ -183,7 +331,8 @@ class Translator:
         except OSError:
             program = shutil.which("ollama") or os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
             if not os.path.exists(program):
-                raise Problem("Ollama is not installed. Get it from https://ollama.com/download, install it and press Start again.")
+                install_ollama()
+                program = os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe")
             log("starting Ollama...")
             subprocess.Popen([program, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -253,6 +402,8 @@ class Translator:
                 for b in blocks]
 
     def ask_model(self, text):
+        if self.closed:
+            raise Problem("the program is closing")
         body = {"model": self.s["model"], "messages": [{"role": "user", "content": self.prompt + text}], "stream": False,
                 "keep_alive": "30m", "options": {"temperature": 0, "num_predict": 400, "num_ctx": 2048}}
         with self.ollama("/api/chat", body) as response:
@@ -287,7 +438,7 @@ class Translator:
         video = await obs.request("GetVideoSettings")
         url = (HERE / "overlay.html").as_uri() + f"?scale={video['baseWidth'] / 1920:g}&ws=ws://127.0.0.1:{self.s['port']}"
         if any(i["inputName"] == name for i in (await obs.request("GetInputList"))["inputs"]):
-            if (await obs.request("GetInputSettings", inputName=name))["inputSettings"].get("url", "").split("&opacity")[0] != url:
+            if (await obs.request("GetInputSettings", inputName=name))["inputSettings"].get("url", "") != url:
                 await obs.request("SetInputSettings", inputName=name, inputSettings={"url": url})
             return
         scenes = self.s["scenes"] or [(await obs.request("GetCurrentProgramScene"))["currentProgramSceneName"]]
@@ -322,7 +473,7 @@ class Translator:
                     t.logged = True
                     log(f"{time.monotonic() - t.since:.2f} s  {t.text}\n          {t.translation}")
             publish({"items": [{"id": t.id, "text": t.translation, "box": t.box, "rows": t.rows, "line_height": t.line_height,
-                                "centered": t.centered} for t in shown]})
+                                "centered": t.centered} for t in shown], "opacity": self.s["opacity"]})
 
         def done(batch, translations):
             state.job = None
@@ -446,19 +597,29 @@ class Translator:
 
 class Window:
     def __init__(self, settings_file):
-        global log
+        global log, ask
         self.file = settings_file
         self.s = load_settings(settings_file)
         self.messages = queue.Queue()
-        self.loop = self.task = None
-        self.restart = False
+        self.loop = self.task = self.translator = self.retry = self.said = self.websocket = self.listener = None
+        self.restart = self.looking = self.started = False
         log = self.messages.put
+        ask = self.ask
         self.labels = {f"{name} ({code})": code for code, name in LANGUAGES.items()}
         names = sorted(self.labels)
 
         self.root = root = tk.Tk()
         root.title(f"OBS Screen Translator {VERSION}")
         root.minsize(620, 420)
+        bar = tk.Menu(root)
+        menu = tk.Menu(bar, tearoff=False)
+        menu.add_command(label="Installation and setup", command=lambda: Page(root, "Installation and setup", GUIDE))
+        menu.add_command(label="Details", command=self.details)
+        menu.add_separator()
+        menu.add_command(label="Open the settings folder", command=lambda: os.startfile(self.file.parent))
+        menu.add_command(label="Project page", command=lambda: webbrowser.open(PROJECT))
+        bar.add_cascade(label="Help", menu=menu)
+        root.configure(menu=bar)
         top = ttk.Frame(root, padding=12)
         top.pack(fill="x")
         top.columnconfigure(1, weight=1)
@@ -476,10 +637,24 @@ class Window:
         self.area = ttk.Label(top)
         self.area.grid(row=3, column=1, sticky="w", padx=(8, 0))
         ttk.Button(top, text="Choose...", command=self.choose_area).grid(row=3, column=2, padx=(8, 0))
+        ttk.Label(top, text="Background opacity").grid(row=4, column=0, sticky="w", pady=4)
+        self.percent = ttk.Label(top)
+        self.percent.grid(row=4, column=2, padx=(8, 0))
+        self.opacity = ttk.Scale(top, from_=0, to=100, command=self.shade)
+        self.opacity.grid(row=4, column=1, sticky="ew", padx=(8, 0))
+        for event in ("<ButtonRelease-1>", "<KeyRelease>"):
+            self.opacity.bind(event, lambda e: save_settings(self.file, self.s))
+        ttk.Label(top, text="Show/hide key").grid(row=5, column=0, sticky="w", pady=4)
+        self.key = ttk.Label(top)
+        self.key.grid(row=5, column=1, sticky="w", padx=(8, 0))
+        ttk.Button(top, text="Set...", command=lambda: KeyPicker(self)).grid(row=5, column=2, padx=(8, 0))
+        self.auto = tk.BooleanVar(value=self.s["start_automatically"])
+        ttk.Checkbutton(top, text="Start translating when this program opens", variable=self.auto,
+                        command=self.remember).grid(row=6, column=0, columnspan=3, sticky="w", pady=4)
         self.button = ttk.Button(top, text="Start", command=self.toggle)
-        self.button.grid(row=4, column=0, sticky="w", pady=(10, 0))
+        self.button.grid(row=7, column=0, sticky="w", pady=(10, 0))
         self.status = ttk.Label(top, text="Stopped")
-        self.status.grid(row=4, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
+        self.status.grid(row=7, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
         frame = ttk.Frame(root, padding=(12, 0, 12, 12))
         frame.pack(fill="both", expand=True)
         self.text = tk.Text(frame, height=14, wrap="word", state="disabled")
@@ -491,25 +666,144 @@ class Window:
         self.source.set(next(label for label, code in self.labels.items() if code == self.s["source_language"]))
         self.target.set(next(label for label, code in self.labels.items() if code == self.s["target_language"]))
         self.obs_source.set(self.s["obs_source"])
+        self.opacity.set(self.s["opacity"] * 100)
+        self.shade(self.s["opacity"] * 100)
         self.show_area()
         for box in (self.source, self.target, self.obs_source):
             box.bind("<<ComboboxSelected>>", self.changed)
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(100, self.pump)
+        self.listen_for_key()
         self.refresh()
 
+    def ask(self, question):
+        answer = queue.Queue()
+        self.messages.put(lambda: answer.put(messagebox.askyesno("OBS Screen Translator", question, parent=self.root)))
+        return answer.get()
+
+    def say(self, message):
+        if message != self.said:
+            self.said = message
+            log(message)
+
     def refresh(self):
-        def work():
-            try:
-                names = asyncio.run(obs_video_sources())
-                self.messages.put(lambda: self.obs_source.configure(values=names))
-                if not self.s["obs_source"]:
-                    log("Choose the game source and press Start.")
-            except Problem as e:
-                log(str(e))
-            except (OSError, websockets.WebSocketException):
-                log("OBS is not running or its WebSocket server is off. Start OBS and press Refresh.")
-        threading.Thread(target=work, daemon=True).start()
+        if self.retry:
+            self.root.after_cancel(self.retry)
+            self.retry = None
+        if not self.looking:
+            self.looking = True
+            threading.Thread(target=self.look, daemon=True).start()
+
+    def look(self):
+        try:
+            names, suggestion = asyncio.run(obs_video_sources())
+            self.messages.put(lambda: self.found(names, suggestion))
+        except (Problem, OSError, websockets.WebSocketException):
+            self.say(self.without_obs())
+            self.messages.put(self.look_again)
+
+    def look_again(self):
+        self.looking = False
+        self.retry = self.root.after(3000, self.refresh)
+
+    def without_obs(self):
+        file = obs_websocket_file()
+        if not file.parents[2].exists():
+            return "Waiting for OBS. Install OBS Studio from https://obsproject.com and start it."
+        if file.exists() and json.loads(file.read_text(encoding="utf-8-sig")).get("server_enabled"):
+            return "Waiting for OBS. Start it; if it is running, check Tools > WebSocket Server Settings > Enable WebSocket server."
+        if self.websocket is None:
+            self.websocket = ask("The WebSocket server in OBS is turned off. The translator needs it to get the picture of the game "
+                                 "and to show the translations.\n\nTurn it on now? The current OBS setting is kept in a backup file.")
+        if not self.websocket:
+            return "The WebSocket server in OBS is off. Turn it on in OBS: Tools > WebSocket Server Settings > Enable WebSocket server."
+        if obs_running():
+            return "Close OBS now: its WebSocket server will be turned on as soon as OBS is closed."
+        enable_obs_websocket()
+        return "The WebSocket server in OBS is turned on. Start OBS."
+
+    def found(self, names, suggestion):
+        self.looking = False
+        if self.said:
+            log("OBS found.")
+        self.said = None
+        self.obs_source.configure(values=names)
+        if not self.s["obs_source"] and suggestion:
+            self.obs_source.set(suggestion)
+            self.changed()
+            log(f'Game source chosen automatically: "{suggestion}". Pick another one in the list if this is not the game.')
+        if not self.s["obs_source"]:
+            log("Choose the game source and press Start.")
+        elif self.auto.get() and not self.started and not self.loop:
+            self.toggle()
+
+    def details(self):
+        folder = pathlib.Path(sys.executable).parent if FROZEN else HERE
+        Page(self.root, "Details", f"""# OBS Screen Translator {VERSION}
+Live translation of on-screen text for streamers. The text in an OBS source is read, translated by a language model on this PC and drawn over the original. Nothing leaves your computer.
+
+Free and open source under the MIT License. Project page: {PROJECT}
+
+# Vibe-coded
+The idea, the testing and every decision come from a streamer who is not a programmer. All of the code was written by an AI coding assistant (Claude, by Anthropic). Nobody has reviewed it line by line.
+
+# How it works
+1. Four times a second the program asks OBS for a picture of the game source.
+2. RapidOCR finds and reads the text, on the graphics card through DirectML or on the processor.
+3. TranslateGemma, run by Ollama, translates new text. Every translation is stored, so text seen before appears at once.
+4. The browser source draws each translation where the original text is.
+
+# On this PC
+Settings: {short_path(self.file)}
+Stored translations: cache_*.json in {short_path(self.file.parent)}
+OBS WebSocket settings: {short_path(obs_websocket_file())}
+Ollama: {self.s['ollama_url']}, model {self.s['model']}
+Text is read on: {'the graphics card (the processor if that fails)' if self.s['ocr_on_gpu'] else 'the processor'}
+Overlay connection: ws://127.0.0.1:{self.s['port']}
+
+# Third-party software
+The program bundles Python, RapidOCR with the PP-OCR models, ONNX Runtime with DirectML, OpenCV, NumPy, websockets and other packages, each under its own license. See {short_path(folder / 'THIRD_PARTY_NOTICES.md')} and the licenses folder next to the program.
+""")
+
+    def shade(self, value):
+        self.s["opacity"] = round(float(value)) / 100
+        self.percent.configure(text=f"{round(float(value))} %")
+        if self.translator:
+            self.translator.s["opacity"] = self.s["opacity"]
+
+    def remember(self):
+        self.s["start_automatically"] = self.auto.get()
+        save_settings(self.file, self.s)
+
+    def set_key(self, hotkey):
+        self.s["hotkey"] = hotkey
+        save_settings(self.file, self.s)
+        if self.listener:
+            ctypes.windll.user32.PostThreadMessageW(self.listener.native_id, 0x0012, 0, 0)
+            self.listener.join(1)
+            self.listener = None
+        self.listen_for_key()
+
+    def listen_for_key(self):
+        self.key.configure(text=self.s["hotkey"]["label"] if self.s["hotkey"] else "None")
+        if self.s["hotkey"]:
+            self.listener = threading.Thread(target=self.listen, args=(self.s["hotkey"],), daemon=True)
+            self.listener.start()
+
+    def listen(self, hotkey):
+        user = ctypes.windll.user32
+        if not user.RegisterHotKey(None, 1, hotkey["modifiers"] | 0x4000, hotkey["key"]):
+            log(f'The key {hotkey["label"]} is taken by another program. Set another one.')
+            return
+        message = ctypes.wintypes.MSG()
+        while user.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
+            if message.message == 0x0312:
+                try:
+                    if asyncio.run(toggle_overlay(self.s["overlay_source"])) is None:
+                        log("There is nothing to show or hide yet. Press Start first.")
+                except (Problem, OSError, websockets.WebSocketException):
+                    log("The key was pressed, but OBS is not reachable.")
+        user.UnregisterHotKey(None, 1)
 
     def show_area(self):
         count = len(self.s["regions"])
@@ -550,13 +844,15 @@ class Window:
             self.start()
 
     def start(self):
+        self.started = True
         self.button.configure(text="Stop")
         self.status.configure(text=f"{self.source.get()} → {self.target.get()}")
         threading.Thread(target=self.work, daemon=True).start()
 
     def work(self):
         self.loop = asyncio.new_event_loop()
-        self.task = self.loop.create_task(Translator(dict(self.s), self.file.parent).serve())
+        self.translator = Translator(dict(self.s), self.file.parent)
+        self.task = self.loop.create_task(self.translator.serve())
         try:
             self.loop.run_until_complete(self.task)
         except asyncio.CancelledError:
@@ -601,8 +897,18 @@ class Window:
         self.root.after(100, self.pump)
 
     def close(self):
+        if self.translator:
+            self.translator.closed = True
         self.stop()
         self.root.destroy()
+        if self.started:
+            # keep_alive 0 unloads the model, so the graphics card is free right away instead of after the keep-alive time.
+            body = json.dumps({"model": self.s["model"], "keep_alive": 0}).encode()
+            try:
+                urllib.request.urlopen(urllib.request.Request(self.s["ollama_url"] + "/api/generate", data=body,
+                                                              headers={"Content-Type": "application/json"}), timeout=5).close()
+            except OSError:
+                pass
 
 
 class AreaPicker:
@@ -670,6 +976,57 @@ class AreaPicker:
         self.window.changed()
 
 
+class Page:
+    def __init__(self, root, title, text):
+        top = tk.Toplevel(root)
+        top.title(title)
+        top.transient(root)
+        frame = ttk.Frame(top, padding=(12, 12, 12, 0))
+        frame.pack(fill="both", expand=True)
+        view = tk.Text(frame, width=96, height=34, wrap="word", padx=10, pady=6, relief="flat", font=("Segoe UI", 10),
+                       spacing1=2, spacing3=2)
+        bar = ttk.Scrollbar(frame, command=view.yview)
+        view.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        view.pack(fill="both", expand=True)
+        view.tag_configure("heading", font=("Segoe UI", 12, "bold"), spacing1=4, spacing3=4)
+        for line in text.split("\n"):
+            heading = line.startswith("# ")
+            view.insert("end", (line[2:] if heading else line) + "\n", "heading" if heading else ())
+        view.configure(state="disabled")
+        ttk.Button(top, text="Close", command=top.destroy).pack(anchor="e", padx=12, pady=12)
+
+
+class KeyPicker:
+    def __init__(self, window):
+        self.window = window
+        self.top = top = tk.Toplevel(window.root)
+        top.title("Show/hide key")
+        top.resizable(False, False)
+        top.transient(window.root)
+        ttk.Label(top, padding=12, text="Press the key that should show and hide the translations: a function key (F1 to F24)\n"
+                                        "or a combination with Ctrl or Alt. It works while the game or OBS is in front.").pack()
+        buttons = ttk.Frame(top, padding=8)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="No key", takefocus=False, command=lambda: self.use(None)).pack(side="left")
+        ttk.Button(buttons, text="Cancel", takefocus=False, command=top.destroy).pack(side="right")
+        top.bind("<KeyPress>", self.press)
+        top.grab_set()
+        top.focus_set()
+
+    def press(self, e):
+        modifiers = (1 if e.state & 0x20000 else 0) | (2 if e.state & 0x4 else 0) | (4 if e.state & 0x1 else 0)
+        if e.keycode in (16, 17, 18, 91, 92) or not (112 <= e.keycode <= 135 or modifiers & 3) or (e.keycode, modifiers) == (115, 1):
+            return
+        names = [name for bit, name in ((2, "Ctrl"), (1, "Alt"), (4, "Shift")) if modifiers & bit]
+        self.use({"key": e.keycode, "modifiers": modifiers,
+                  "label": "+".join(names + [e.keysym.upper() if len(e.keysym) == 1 else e.keysym])})
+
+    def use(self, hotkey):
+        self.top.destroy()
+        self.window.set_key(hotkey)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate the on-screen text of an OBS source and draw the translation over the original.")
     parser.add_argument("--settings", default=str(DATA / "settings.json"), help="settings file (created on the first start)")
@@ -686,7 +1043,6 @@ if __name__ == "__main__":
             sys.exit(str(e))
     else:
         if sys.platform == "win32":
-            import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         Window(settings_file).root.mainloop()
         os._exit(0)

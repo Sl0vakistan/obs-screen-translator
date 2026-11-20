@@ -24,11 +24,11 @@ program folder, and copies the license texts shipped by the packages next to it.
 
 The LGPL library (GEOS) is shipped as a separate file inside the program folder and can be replaced there.
 
-## Installed by the user, not bundled
+## Installed separately, not bundled
 
 | software | used for | license |
 |---|---|---|
-| [Ollama](https://github.com/ollama/ollama) | serving the translation model | MIT |
+| [Ollama](https://github.com/ollama/ollama) (installed by the user, or downloaded from ollama.com by the program when the user agrees) | serving the translation model | MIT |
 | [TranslateGemma](https://ollama.com/library/translategemma) (downloaded by Ollama on the first start) | translation model | Gemma Terms of Use |
 | [OBS Studio](https://github.com/obsproject/obs-studio) with its WebSocket server | source of the frames, host of the overlay | GPL-2.0-or-later |
 
