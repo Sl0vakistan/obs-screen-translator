@@ -8,6 +8,7 @@ import difflib
 import hashlib
 import json
 import locale
+import math
 import os
 import pathlib
 import queue
@@ -33,18 +34,22 @@ from rapidocr import RapidOCR
 
 import ui_sk
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 PROJECT = "https://github.com/Sl0vakistan/obs-screen-translator"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE
 LANGUAGES = json.loads((HERE / "languages.json").read_text(encoding="utf-8"))
 STYLE = {"font": "Segoe UI Semibold", "size": 0, "bold": False, "italic": False, "color": "#ffffff", "background": "#000000",
-         "opacity": 0.85, "outline": 0, "outline_color": "#000000", "align": "auto"}
+         "opacity": 0.85, "outline": 0, "outline_color": "#000000", "align": "auto", "padding": 8, "shadow": 0, "shadow_strength": 0.5}
 ALIGN = {"auto": "Automatic", "left": "Left", "center": "Centre", "right": "Right"}
 SAMPLE = "This is how the translations will look"
-MODELS = {"translategemma:12b": "TranslateGemma 12b: best translations, about 7.5 GB of graphics memory",
-          "translategemma:4b": "TranslateGemma 4b: weaker translations, about 2.7 GB of graphics memory"}
+STAGE = "#3d4650"
+MODELS = {"translategemma:4b": "TranslateGemma 4b: weaker translations, about 2.7 GB of graphics memory",
+          "translategemma:12b": "TranslateGemma 12b: recommended, about 7.5 GB of graphics memory",
+          "translategemma:27b": "TranslateGemma 27b: best translations, about 17 GB of graphics memory"}
+# Graphics memory in GB (2^30 bytes) each model takes: the size of the model plus a little for its work.
+MEMORY = {"translategemma:4b": 2.7, "translategemma:12b": 7.5, "translategemma:27b": 17}
 DEFAULTS = {
     "obs_source": "",
     "scenes": [],
@@ -87,10 +92,10 @@ GUIDE = """# What you need
 
 # Setting up
 - Translation > Translate from / Translate to: the language of the game and the language of your viewers. The target starts as the language of Windows.
-- Translation > Model: TranslateGemma 12b translates best and needs about 7.5 GB of graphics memory; 4b needs about 2.7 GB and translates worse. The line below it shows the graphics card of this PC. A model that is not on this PC yet is downloaded on the next Start.
+- Translation > Model: TranslateGemma 4b (about 2.7 GB of graphics memory, weaker translations), 12b (about 7.5 GB, recommended) or 27b (about 17 GB, best translations; on a card with 16 GB or less part of it runs on the processor and it translates much more slowly). The line below it shows the graphics card of this PC. A model that is not on this PC yet is downloaded on the next Start.
 - Game > Source in OBS: the source with the game. A single capture card in the scene that is on air is chosen by itself.
-- Game > Areas to read: optional rectangles around the parts to translate, for example the subtitles. With none the whole picture is read. For each area you can also draw where its translation is shown, if not over the original text. That place keeps the proportions of its area, so the translation is never squeezed.
-- On screen > Look: font, size, colours, background, outline and alignment. One look for all areas, or a look of its own for any area. While the editor is open, a sample translation is shown in OBS. Each area can also be shown in an OBS source of its own: New source... adds another browser source, which you can move, show and hide in OBS on its own.
+- Game > Areas to read: optional rectangles around the parts to translate, for example the subtitles. With none the whole picture is read. For each area you can also draw where its translation is shown, if not over the original text. That place keeps the proportions of its area, so the translation is never squeezed. OK confirms; Apply shows the changes in OBS at once and keeps the window open, and while it is open every area shows its number in OBS where its translations will appear.
+- On screen > Look: font, size, colours, background and its size, outline and alignment. Background box: at 0 there is none, it grows smoothly and at 8 it covers the original text. Shadow around letters: a soft shadow without edges that follows the letters, from none to large; its intensity makes it lighter or darker. One look for all areas, or a look of its own for any area. While the editor is open, a sample translation is shown in OBS. Each area can also be shown in an OBS source of its own: New source... adds another browser source, which you can move, show and hide in OBS on its own.
 - On screen > Show/hide key: one key that shows and hides all translation sources from any window, also from a Stream Deck.
 - Start translating when this program opens: no need to press Start next time.
 - The button next to Help switches this program between English and Slovak. Every window can be made bigger or smaller.
@@ -99,7 +104,8 @@ Then press Start. A browser source named Translation overlay appears in the scen
 
 # During the stream
 - Hiding a translation source in OBS stops reading the areas shown in it. With all of them hidden, for example with the show/hide key, reading and translating pause.
-- Changing a language, the model or an area while translating restarts the translation by itself.
+- Changing a language or the model while translating restarts the translation by itself; changed areas take effect at once.
+- Tilted text, such as a phone in a hand, is translated at the same angle, and a translation follows small movements of its text instead of flickering. On a still picture translations do not move.
 - Keep this window open. Closing it removes the translations from the picture and unloads the translation model from the graphics card.
 
 # Ollama
@@ -119,7 +125,7 @@ Ollama is a free program that runs the translation model on this PC. The transla
 - The download of the model stopped: check the internet connection and the free disk space, then press Start again. The download continues where it stopped.
 - Translations take several seconds: the model does not fit into the graphics memory, for example next to a demanding game. Choose TranslateGemma 4b (see Ollama).
 - No translations on screen: the translation source (Translation overlay, or one you added) is hidden, is not in the scene that is on air, or sits inside a nested scene.
-- Moving text stays untranslated until it stands still for a moment. This is on purpose: it skips signs and number plates.
+- Text that moves fast stays untranslated until it slows down. This is on purpose: it skips signs and number plates while the camera turns. Small movements, like a phone in a hand, are followed.
 - The first translation after a break is late: the model is being loaded, which takes about 12 seconds.
 - Cyrillic, Arabic, Korean and other scripts are not read yet. Latin script and Chinese are.
 """
@@ -516,8 +522,13 @@ def same_text(a, b):
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.85
 
 
-def same_place(a, b):
-    return abs(a[0] + a[2] - b[0] - b[2]) < 0.012 and abs(a[1] - b[1]) < 0.006
+def covered(a, b):
+    w, h = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+    return w > 0 and h > 0 and w * h > 0.5 * (a[2] - a[0]) * (a[3] - a[1])
+
+
+def direction(angle):
+    return np.array((math.cos(math.radians(angle)), math.sin(math.radians(angle))))
 
 
 def overlap(a, b):
@@ -542,6 +553,9 @@ class Translator:
         self.direct = None
         self.touched = 0.0
         self.sample = None
+        self.count = 0
+        self.aspect = 16 / 9
+        self.reset = False
 
     def ollama(self, path, body=None, timeout=60):
         request = urllib.request.Request(self.s["ollama_url"] + path, data=body and json.dumps(body).encode(),
@@ -591,6 +605,7 @@ class Translator:
     # visible: the translation sources shown in OBS; areas whose source is hidden are not read.
     def read(self, frame, visible=None):
         h, w = frame.shape[:2]
+        self.aspect = w / h
         picture, strips = frame, [(0, h, 0, 0, None)]
         if not self.s["regions"] and visible is not None and 0 not in visible:
             return []
@@ -606,33 +621,50 @@ class Translator:
                 strips.append((y, y + b - t, l, t, n))
                 y += b - t + 16
         r = text_reader(self.s)(picture)
+        # Every line comes as four corners, so a tilted line (a phone in a hand) is measured along its own direction:
+        # its true height, and where the next line starts below it, instead of an upright box around it.
         lines = []
-        for box, text, score in zip(r.boxes, r.txts, r.scores) if r.txts else ():
-            middle = (box[:, 1].min() + box[:, 1].max()) / 2
+        for quad, text, score in zip(r.boxes, r.txts, r.scores) if r.txts else ():
+            middle = (quad[:, 1].min() + quad[:, 1].max()) / 2
             start, stop, left, top, region = min(strips, key=lambda s: max(s[0] - middle, middle - s[1], 0))
-            x0, y0 = float((box[:, 0].min() + left) / w), float((box[:, 1].min() - start + top) / h)
-            x1, y1 = float((box[:, 0].max() + left) / w), float((box[:, 1].max() - start + top) / h)
-            if score >= self.s["min_score"] and (y1 - y0) * 1080 >= self.s["min_height"] and re.search(r"[^\W\d_]{3}", text):
-                lines.append((y0, x0, x1, y1, " ".join(text.split()), region))
+            p = quad.astype(float) + (left, top - start)
+            width, height = float(np.hypot(*(p[1] - p[0]))), float(np.hypot(*(p[3] - p[0])))
+            angle = math.degrees(math.atan2(p[1][1] - p[0][1], p[1][0] - p[0][0])) if width >= 2 * height else None
+            if score >= self.s["min_score"] and height * 1080 / h >= self.s["min_height"] and re.search(r"[^\W\d_]{2}", text):
+                # A line with fewer than three letters in a row ("go.") may end a block, but is never translated on its own.
+                lines.append(types.SimpleNamespace(p=p, width=width, height=height, angle=angle, text=" ".join(text.split()), region=region,
+                                                   short=not re.search(r"[^\W\d_]{3}", text)))
         blocks = []
-        for y0, x0, x1, y1, text, region in sorted(lines, key=lambda line: line[:5]):
-            lh = y1 - y0
-            lw = lh * h / w
+        for line in sorted(lines, key=lambda line: (line.p[0][1], line.p[0][0])):
             for b in blocks:
-                px0, py0, px1, py1 = b["last"]
-                if (py0 + 0.5 * (py1 - py0) < y0 < py1 + 0.6 * lh and 0.7 < lh / (py1 - py0) < 1.4
-                        and (abs(x0 - px0) < 1.5 * lw or abs(x0 + x1 - px0 - px1) < 3 * lw)):
-                    b["lines"].append(text)
-                    b["centered"] += abs(x0 + x1 - px0 - px1) < 2 * abs(x0 - px0)
-                    b["box"] = [min(b["box"][0], x0), b["box"][1], max(b["box"][2], x1), y1]
-                    b["last"] = (x0, y0, x1, y1)
+                last = b.lines[-1]
+                u = direction(last.angle if last.angle is not None else b.angle)
+                along, across = float((line.p[0] - last.p[0]) @ u), float((line.p[0] - last.p[0]) @ (-u[1], u[0]))
+                shift = along + line.width / 2 - last.width / 2
+                if (0.5 * last.height < across < last.height + 0.6 * line.height and 0.7 < line.height / last.height < 1.4
+                        and (line.angle is None or last.angle is None or abs(line.angle - last.angle) < 4)
+                        and (abs(along) < 1.5 * line.height or abs(shift) < 1.5 * line.height)):
+                    b.lines.append(line)
+                    b.centered += abs(shift) < 2 * abs(along)
                     break
             else:
-                blocks.append({"lines": [text], "box": [x0, y0, x1, y1], "last": (x0, y0, x1, y1), "centered": 0, "region": region})
-        return [types.SimpleNamespace(text=" ".join(b["lines"]), box=b["box"], rows=len(b["lines"]), region=b["region"],
-                                      line_height=(b["box"][3] - b["box"][1]) / len(b["lines"]),
-                                      centered=b["centered"] > 0 if len(b["lines"]) > 1 else abs(b["box"][0] + b["box"][2] - 1) < 0.04)
-                for b in blocks]
+                if not line.short:
+                    blocks.append(types.SimpleNamespace(lines=[line], centered=0, region=line.region, angle=line.angle or 0))
+        result = []
+        for b in blocks:
+            angles = [line.angle for line in b.lines if line.angle is not None]
+            angle = sum(angles) / len(angles) if angles else 0.0
+            angle = 0.0 if abs(angle) < 2 else angle
+            u = direction(angle)
+            corners = np.vstack([line.p for line in b.lines])
+            along, across = corners @ u, corners @ (-u[1], u[0])
+            width, height = float(np.ptp(along)), float(np.ptp(across))
+            cx, cy = (u * (along.max() + along.min()) / 2 + np.array((-u[1], u[0])) * (across.max() + across.min()) / 2) / (w, h)
+            box = [float(cx - width / w / 2), float(cy - height / h / 2), float(cx + width / w / 2), float(cy + height / h / 2)]
+            result.append(types.SimpleNamespace(text=" ".join(line.text for line in b.lines), box=box, rows=len(b.lines), region=b.region,
+                                                line_height=height / h / len(b.lines), angle=round(angle, 1),
+                                                centered=b.centered > 0 if len(b.lines) > 1 else abs(box[0] + box[2] - 1) < 0.04))
+        return result
 
     # Ollama spends about a third of a second on every request before the model starts working, so after the first answer the
     # program talks to the llama-server that Ollama started for the model, as long as it answers exactly like Ollama does.
@@ -712,18 +744,68 @@ class Translator:
         s = (c1 - c0) / (a1 - a0)
         return [c0 + (box[0] - a0) * s, d0 + (box[1] - b0) * s, c0 + (box[2] - a0) * s, d0 + (box[3] - b0) * s], line_height * s
 
-    # While the look editor is open, a sample translation shows the chosen look in OBS.
+    # While the look editor is open, a sample translation shows the chosen look in OBS; while the areas are being chosen,
+    # every area shows its number where its translations will appear.
     def sample_items(self):
         if self.sample is None:
             return []
-        region = self.region(self.sample)
-        box = (fit(region["box"], region["display"]) if region["display"] else region["box"]) if region else [0.2, 0.8, 0.8, 0.86]
-        middle, height = (box[1] + box[3]) / 2, min(0.034, box[3] - box[1])
-        return [{"id": "sample", "text": _(SAMPLE), "box": [box[0] + 0.01, middle - height / 2, box[2] - 0.01, middle + height / 2],
-                 "rows": 1, "line_height": height, "centered": True, "style": self.style(self.sample), "overlay": self.overlay(self.sample)}]
+        items = []
+        for n in range(len(self.s["regions"])) if self.sample == "areas" else [self.sample]:
+            region = self.region(n)
+            box = (fit(region["box"], region["display"]) if region["display"] else region["box"]) if region else [0.2, 0.8, 0.8, 0.86]
+            middle, height = (box[1] + box[3]) / 2, min(0.034, box[3] - box[1])
+            items.append({"id": f"sample-{n}", "text": _("Area {n}").format(n=n + 1) if self.sample == "areas" else _(SAMPLE),
+                          "box": [box[0] + 0.01, middle - height / 2, box[2] - 0.01, middle + height / 2], "rows": 1,
+                          "line_height": height, "centered": True, "style": self.style(n), "overlay": self.overlay(n)})
+        return items
+
+    def moved(self, b, t):
+        return math.hypot((b.box[0] + b.box[2] - t.box[0] - t.box[2]) / 2 * self.aspect, (b.box[1] + b.box[3] - t.box[1] - t.box[3]) / 2) / t.line_height
+
+    # New text is shown after it has been read twice in nearly the same place, so text that sweeps across the picture with the
+    # camera is skipped. A translation on screen then follows its text while it moves less than 2.5 line heights between reads,
+    # like a phone in a hand, and an old translation stays until the text that took its place is translated.
+    def follow(self, tracks, blocks, now, started):
+        for b in blocks:
+            matches = [t for t in tracks if t.seen != now and (same_text(b.text, t.text) or not t.sentence and overlap(b.box, t.box)
+                                                               and (key(t.text) in key(b.text) or key(b.text) in key(t.text)))]
+            t = min(matches, key=lambda t: self.moved(b, t), default=None)
+            if t:
+                step = self.moved(b, t)
+                t.stable = step < (2.5 if t.stable else 0.6)
+                t.seen, t.replaced = now, None
+                # Two reads of a still picture differ by a pixel or two, and a menu item is sometimes read together with its
+                # neighbour; the translation moves only when the same text really moved, turned or changed its size.
+                size = max(abs((b.box[2] - b.box[0]) / (t.box[2] - t.box[0]) - 1), abs((b.box[3] - b.box[1]) / (t.box[3] - t.box[1]) - 1))
+                if same_text(b.text, t.text) and (step >= 0.25 or abs(b.angle - t.angle) >= 2 or size >= 0.25 or b.rows != t.rows):
+                    t.box, t.angle, t.rows, t.line_height, t.centered = b.box, b.angle, b.rows, b.line_height, b.centered
+                continue
+            self.count += 1
+            for old in tracks:
+                if old.seen != now and overlap(old.box, b.box):
+                    old.replaced = self.count
+            words = re.findall(r"[^\W\d_]+", b.text)
+            tracks.append(types.SimpleNamespace(id=self.count, text=b.text, box=b.box, angle=b.angle, rows=b.rows, line_height=b.line_height,
+                                                centered=b.centered, region=b.region, seen=now, since=started, stable=False, replaced=None,
+                                                translation=self.cache.get(key(b.text)), logged=False,
+                                                sentence=sum(not x.isupper() for x in words) >= 2))
+        shown = {t.id for t in self.showing(tracks)}
+        tracks[:] = [t for t in tracks if now - t.seen <= self.s["linger"] or t.replaced and t.replaced not in shown and now - t.seen <= 3]
+
+    # Bigger blocks first; a translation whose place is mostly taken by one already shown (a line read on its own) is left out.
+    def showing(self, tracks):
+        ready = {t.id for t in tracks if t.stable and t.translation}
+        shown = []
+        for t in sorted((t for t in tracks if t.id in ready), key=lambda t: -t.rows):
+            if t.replaced not in ready and not any(covered(t.box, s.box) for s in shown):
+                shown.append(t)
+        return shown
 
     def tidy(self, text, translation):
         translation = " ".join(translation.split())
+        if "(" not in text:
+            # The model sometimes adds a remark in brackets, such as that a sentence is unfinished; it is not in the text.
+            translation = re.sub(r"\s*\([^)]*\)", "", translation).strip()
         if translation.endswith(".") and not text.endswith("."):
             translation = translation[:-1]
         if text.isupper():
@@ -749,13 +831,15 @@ class Translator:
     async def prepare_overlays(self, obs):
         video = await obs.request("GetVideoSettings")
         existing = {i["inputName"]: i["inputKind"] for i in (await obs.request("GetInputList"))["inputs"]}
+        # The address carries a fingerprint of the page, so OBS loads it again whenever the page changes.
+        page = hashlib.md5((HERE / "overlay.html").read_bytes()).hexdigest()[:8]
         for n, overlay in enumerate(self.s["overlays"]):
             name = overlay["name"]
             if existing.get(name, "browser_source") != "browser_source":
                 raise Problem(_('OBS already has a source named "{name}" that is not a browser source. In Look of translations, '
                                 'remove this translation source and add one with another name.').format(name=name))
             url = (HERE / "overlay.html").as_uri() + (f"?scale={video['baseWidth'] / 1920:g}&ws=ws://127.0.0.1:{self.s['port']}"
-                                                      f"&overlay={n}&v={VERSION}")
+                                                      f"&overlay={n}&v={page}")
             if name in existing:
                 if (await obs.request("GetInputSettings", inputName=name))["inputSettings"].get("url", "") != url:
                     await obs.request("SetInputSettings", inputName=name, inputSettings={"url": url})
@@ -783,10 +867,10 @@ class Translator:
             await self.prepare_overlays(obs)
         loop = asyncio.get_running_loop()
         tracks = []
-        state = types.SimpleNamespace(job=None, n=0, error=None, dirty=False, active=None)
+        state = types.SimpleNamespace(job=None, error=None, dirty=False, active=None)
 
         def send():
-            shown = [t for t in tracks if t.stable and t.translation]
+            shown = self.showing(tracks)
             for t in shown:
                 if not t.logged:
                     t.logged = True
@@ -794,7 +878,7 @@ class Translator:
             items = []
             for t in shown:
                 box, line_height = self.place(t.region, t.box, t.line_height)
-                items.append({"id": t.id, "text": t.translation, "box": box, "rows": t.rows, "line_height": line_height,
+                items.append({"id": t.id, "text": t.translation, "box": box, "rows": t.rows, "line_height": line_height, "angle": t.angle,
                               "centered": t.centered, "style": self.style(t.region), "overlay": self.overlay(t.region)})
             publish({"items": items + self.sample_items()})
 
@@ -838,29 +922,10 @@ class Translator:
                 if str(e) != state.error:
                     log(_("screenshot failed: {error}").format(error=e))
                 state.error, blocks = str(e), []
-            now = time.monotonic()
-            unmatched = []
-            for b in blocks:
-                t = next((t for t in tracks if t.seen != now and (
-                    same_text(b.text, t.text) and same_place(b.box, t.box)
-                    or not t.sentence and overlap(b.box, t.box) and (key(t.text) in key(b.text) or key(b.text) in key(t.text)))), None)
-                if t:
-                    t.seen, t.stable = now, True
-                else:
-                    unmatched.append(b)
-            for b in unmatched:
-                t = next((t for t in tracks if t.seen != now and same_text(b.text, t.text)), None)
-                if t:
-                    t.seen, t.stable, t.box = now, False, b.box
-                else:
-                    tracks[:] = [t for t in tracks if t.seen == now or not overlap(t.box, b.box)]
-                    state.n += 1
-                    words = re.findall(r"[^\W\d_]+", b.text)
-                    tracks.append(types.SimpleNamespace(id=state.n, text=b.text, box=b.box, rows=b.rows, line_height=b.line_height,
-                                                        centered=b.centered, region=b.region, seen=now, since=started, stable=False,
-                                                        translation=self.cache.get(key(b.text)), logged=False,
-                                                        sentence=sum(not x.isupper() for x in words) >= 2))
-            tracks[:] = [t for t in tracks if now - t.seen <= self.s["linger"]]
+            if self.reset:
+                self.reset = False
+                tracks.clear()
+            self.follow(tracks, blocks, time.monotonic(), started)
             next_job()
             send()
             if state.dirty:
@@ -1061,6 +1126,21 @@ class Window:
         for box in (self.source, self.target, self.obs_source, self.model):
             box.bind("<<ComboboxSelected>>", self.changed)
 
+    def show_sample(self, sample):
+        self.sample = sample
+        if self.translator:
+            self.translator.sample = sample
+
+    # New areas take effect at once, also while translating: the running translator reads them from the next picture on.
+    def set_regions(self, regions):
+        self.s["regions"] = regions
+        save_settings(self.file, self.s)
+        if self.translator:
+            self.translator.s["regions"] = regions
+            self.translator.reset = True
+        self.show_area()
+        self.show_look()
+
     def label(self, code):
         return next(label for label, value in self.labels.items() if value == code)
 
@@ -1228,6 +1308,10 @@ class Window:
         model = self.models[self.model.get()]
         if model != self.s["model"] and self.started and not self.loop:
             threading.Thread(target=unload_model, args=(self.s["ollama_url"], self.s["model"]), daemon=True).start()
+        if model != self.s["model"] and self.card and MEMORY.get(model, 0) > self.card[0] / 2 ** 30:
+            log(_("{model} needs about {need} GB of graphics memory and this graphics card has {memory} GB: part of the model runs on "
+                  "the processor and it translates much more slowly.").format(
+                model=model, need=decimal(MEMORY[model], 0 if MEMORY[model] >= 10 else 1), memory=round(self.card[0] / 2 ** 30)))
         self.s.update(source_language=self.labels[self.source.get()], target_language=self.labels[self.target.get()],
                       obs_source=self.obs_source.get().strip(), model=model)
         save_settings(self.file, self.s)
@@ -1325,15 +1409,16 @@ class AreaPicker:
         hint = ttk.Label(top, padding=8, wraplength=round(width), text=_(
             "Drag a rectangle around each part you want translated (yellow). With no rectangle the whole picture is read. "
             "To show the translation of an area somewhere else, choose the area below and drag the place where it should be shown "
-            "(blue). The place keeps the proportions of its area."))
+            "(blue). The place keeps the proportions of its area. Apply shows the changes in OBS at once and keeps this window open."))
         hint.pack(fill="x")
         hint.bind("<Configure>", lambda e: e.widget.configure(wraplength=max(e.width - 16, 200)))
         buttons = ttk.Frame(top, padding=8)
         buttons.pack(side="bottom", fill="x")
-        ttk.Button(buttons, text=_("Use"), command=self.use).pack(side="left")
-        ttk.Button(buttons, text=_("Remove last"), command=self.remove_last).pack(side="left", padx=8)
-        ttk.Button(buttons, text=_("Remove all"), command=self.remove_all).pack(side="left")
-        ttk.Button(buttons, text=_("Cancel"), command=top.destroy).pack(side="right")
+        ttk.Button(buttons, text=_("Remove last"), command=self.remove_last).pack(side="left")
+        ttk.Button(buttons, text=_("Remove all"), command=self.remove_all).pack(side="left", padx=8)
+        ttk.Button(buttons, text=_("Apply"), command=self.apply).pack(side="right")
+        ttk.Button(buttons, text=_("Cancel"), command=self.close).pack(side="right", padx=8)
+        ttk.Button(buttons, text="OK", style="Accent.TButton", command=self.ok).pack(side="right")
         mode = ttk.Frame(top, padding=(8, 8, 8, 0))
         mode.pack(side="bottom", fill="x")
         self.mode = tk.StringVar(value="read")
@@ -1350,8 +1435,11 @@ class AreaPicker:
         self.canvas.bind("<ButtonPress-1>", self.press)
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.release)
+        top.protocol("WM_DELETE_WINDOW", self.close)
         themed(top)
         top.minsize(mode.winfo_reqwidth() + 16, top.winfo_reqheight() - self.canvas.winfo_reqheight() + 240)
+        self.previous = window.sample
+        window.show_sample("areas")
         top.grab_set()
 
     # The picture is redrawn after the window stops changing size, at the size that fits and with the proportions of the source.
@@ -1446,7 +1534,7 @@ class AreaPicker:
         self.boxes, self.displays = [], []
         self.draw()
 
-    def use(self):
+    def apply(self):
         before = {tuple(region["box"]): region for region in self.window.s["regions"]}
         regions = []
         for box, shown in zip(self.boxes, self.displays):
@@ -1454,11 +1542,16 @@ class AreaPicker:
             old = before.get(tuple(box), {})
             regions.append({"box": box, "style": old.get("style"), "display": [round(v, 3) for v in shown] if shown else None,
                             "overlay": old.get("overlay", 0)})
-        self.window.s["regions"] = regions
+        self.window.set_regions(regions)
+        self.window.show_sample("areas")
+
+    def ok(self):
+        self.apply()
+        self.close()
+
+    def close(self):
+        self.window.show_sample(self.previous if self.window.editor else None)
         self.top.destroy()
-        self.window.show_area()
-        self.window.show_look()
-        self.window.changed()
 
 
 class StyleEditor:
@@ -1472,7 +1565,7 @@ class StyleEditor:
         f = ttk.Frame(top, padding=16)
         f.pack(fill="both", expand=True)
         f.columnconfigure(1, weight=1)
-        f.rowconfigure(9, weight=1)
+        f.rowconfigure(11, weight=1)
         count = len(window.s["regions"])
         ttk.Label(f, text=_("Settings for")).grid(row=0, column=0, sticky="w", pady=4)
         self.target = ttk.Combobox(f, state="readonly", values=[_("All areas (default look)") if count else _("Whole picture")]
@@ -1527,9 +1620,30 @@ class StyleEditor:
         self.percent = ttk.Label(row, width=6)
         self.percent.pack(side="left", padx=(6, 0))
 
-        ttk.Label(f, text=_("Outline")).grid(row=7, column=0, sticky="w", pady=4)
+        ttk.Label(f, text=_("Background box")).grid(row=7, column=0, sticky="w", pady=4)
         row = ttk.Frame(f)
         row.grid(row=7, column=1, sticky="w", padx=(8, 0))
+        self.padding = ttk.Scale(row, from_=0, to=40, length=180, command=lambda v: self.apply())
+        self.padding.pack(side="left")
+        self.margin = ttk.Label(row, width=8)
+        self.margin.pack(side="left", padx=(6, 0))
+
+        ttk.Label(f, text=_("Shadow around letters")).grid(row=8, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=8, column=1, sticky="w", padx=(8, 0))
+        self.shadow = ttk.Scale(row, from_=0, to=20, length=150, command=lambda v: self.apply())
+        self.shadow.pack(side="left")
+        self.blur = ttk.Label(row, width=6)
+        self.blur.pack(side="left", padx=(6, 0))
+        ttk.Label(row, text=_("intensity")).pack(side="left", padx=(12, 4))
+        self.strength = ttk.Scale(row, from_=0, to=100, length=150, command=lambda v: self.apply())
+        self.strength.pack(side="left")
+        self.darkness = ttk.Label(row, width=6)
+        self.darkness.pack(side="left", padx=(6, 0))
+
+        ttk.Label(f, text=_("Outline")).grid(row=9, column=0, sticky="w", pady=4)
+        row = ttk.Frame(f)
+        row.grid(row=9, column=1, sticky="w", padx=(8, 0))
         self.outline = ttk.Spinbox(row, from_=0, to=8, width=4, command=self.apply)
         self.outline.bind("<KeyRelease>", lambda e: self.apply())
         self.outline.pack(side="left")
@@ -1537,19 +1651,20 @@ class StyleEditor:
         self.outline_color = ttk.Button(row, width=10, compound="left", command=lambda: self.pick("outline_color"))
         self.outline_color.pack(side="left")
 
-        ttk.Label(f, text=_("Alignment")).grid(row=8, column=0, sticky="w", pady=4)
+        ttk.Label(f, text=_("Alignment")).grid(row=10, column=0, sticky="w", pady=4)
         self.align = ttk.Combobox(f, state="readonly", width=14, values=[_(name) for name in ALIGN.values()])
         self.align.bind("<<ComboboxSelected>>", lambda e: self.apply())
-        self.align.grid(row=8, column=1, sticky="w", padx=(8, 0))
+        self.align.grid(row=10, column=1, sticky="w", padx=(8, 0))
 
-        self.stage = tk.Frame(f, bg="#3d4650", height=110, width=560)
-        self.stage.grid(row=9, column=0, columnspan=2, sticky="nsew", pady=(12, 4))
+        self.stage = tk.Frame(f, bg=STAGE, height=110, width=560)
+        self.stage.grid(row=11, column=0, columnspan=2, sticky="nsew", pady=(12, 4))
         self.stage.pack_propagate(False)
         self.sample = tk.Label(self.stage, text=_(SAMPLE), padx=10, pady=2)
         self.sample.pack(expand=True)
         ttk.Label(f, text=_("While translating, OBS shows a sample translation with this look as long as this window is open.\n"
-                            "Opacity and outline are shown exactly only in OBS."), foreground=COLORS[THEME]["muted"]).grid(
-            row=10, column=0, columnspan=2, sticky="w")
+                            "Opacity, outline and shadow are shown exactly only in OBS."),
+                  foreground=COLORS[THEME]["muted"]).grid(
+            row=12, column=0, columnspan=2, sticky="w")
         place = ttk.Frame(top, padding=(16, 0, 16, 10))
         place.pack(fill="x")
         ttk.Label(place, text=_("Shown in OBS source")).pack(side="left")
@@ -1565,7 +1680,7 @@ class StyleEditor:
         ttk.Button(buttons, text=_("Original look"), command=self.reset).pack(side="left")
         ttk.Button(buttons, text=_("Close"), command=self.close).pack(side="right")
         self.controls = [self.font, self.auto_size, self.fixed_size, self.size, self.bold_box, self.italic_box, self.color,
-                         self.background, self.opacity, self.outline, self.outline_color, self.align]
+                         self.background, self.opacity, self.padding, self.shadow, self.strength, self.outline, self.outline_color, self.align]
         top.protocol("WM_DELETE_WINDOW", self.close)
         self.load()
         themed(top)
@@ -1595,6 +1710,9 @@ class StyleEditor:
         self.bold.set(st["bold"])
         self.italic.set(st["italic"])
         self.opacity.set(st["opacity"] * 100)
+        self.padding.set(st["padding"])
+        self.shadow.set(st["shadow"])
+        self.strength.set(st["shadow_strength"] * 100)
         self.outline.set(st["outline"])
         self.align.set(_(ALIGN[st["align"]]))
         for widget in self.controls:
@@ -1651,6 +1769,8 @@ class StyleEditor:
         st = self.style()
         st.update(font=self.font.get().strip() or st["font"], size=number(self.size.get(), 8, 150, 36) if self.fixed.get() else 0,
                   bold=self.bold.get(), italic=self.italic.get(), opacity=round(float(self.opacity.get())) / 100,
+                  padding=round(float(self.padding.get())), shadow=round(float(self.shadow.get())),
+                  shadow_strength=round(float(self.strength.get())) / 100,
                   outline=number(self.outline.get(), 0, 8, 0), align=list(ALIGN)[max(self.align.current(), 0)])
         save_settings(self.window.file, self.window.s)
         self.show()
@@ -1682,20 +1802,21 @@ class StyleEditor:
             button.image.put(st[name], to=(1, 1, 15, 15))
             button.configure(image=button.image, text=f" {st[name]}")
         self.percent.configure(text=f"{round(st['opacity'] * 100)} %")
-        stage = (0x3d, 0x46, 0x50)
-        mixed = "#%02x%02x%02x" % tuple(round(int(st["background"][1 + 2 * i:3 + 2 * i], 16) * st["opacity"] + stage[i] * (1 - st["opacity"]))
+        self.margin.configure(text=f"{st['padding']} px")
+        self.blur.configure(text=f"{st['shadow']} px")
+        self.darkness.configure(text=f"{round(st['shadow_strength'] * 100)} %")
+        # Like in OBS, a small box comes in gradually: it reaches its full opacity at 4.
+        opacity, stage = st["opacity"] * min(1, st["padding"] / 4), (0x3d, 0x46, 0x50)
+        mixed = "#%02x%02x%02x" % tuple(round(int(st["background"][1 + 2 * i:3 + 2 * i], 16) * opacity + stage[i] * (1 - opacity))
                                         for i in range(3))
         self.sample.configure(font=tkfont.Font(family=st["font"], size=-(st["size"] or 36), weight="bold" if st["bold"] else "normal",
-                                               slant="italic" if st["italic"] else "roman"), fg=st["color"], bg=mixed)
+                                               slant="italic" if st["italic"] else "roman"), fg=st["color"], bg=mixed,
+                              padx=st["padding"], pady=round(st["padding"] / 4))
         self.window.show_look()
-        self.window.sample = self.area()
-        if self.window.translator:
-            self.window.translator.sample = self.area()
+        self.window.show_sample(self.area())
 
     def close(self):
-        self.window.sample = None
-        if self.window.translator:
-            self.window.translator.sample = None
+        self.window.show_sample(None)
         self.window.editor = None
         self.top.destroy()
 

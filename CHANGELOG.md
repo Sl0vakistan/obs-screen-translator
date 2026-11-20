@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.0 - 2026-11-20
+
+- **Tilted text**: every line is measured along its own direction, from the four corners the text reader returns. A phone
+  held at an angle is translated at the same angle, the lines of one chat bubble are joined correctly and the line height
+  is the real one, so translations no longer grow too big or cover each other.
+- **Steady translations**: a translation on screen follows its text while it moves a little, like a phone in a hand, and
+  glides along smoothly instead of disappearing and coming back. New text still has to rest for one read, so text that
+  sweeps across the picture with the camera is skipped. An old translation stays until the text that replaced it is
+  translated, a line read on its own is not drawn over the block it belongs to, and a remark in brackets that the model
+  adds and that is not in the text (such as that a sentence is unfinished) is left out. On 40 pictures of a phone moved
+  as in a hand, 0.7.0 showed and hid translations 87 and 83 times and asked for 63 translations; 0.8.0 showed each of its
+  7 blocks once, hid none and asked for 7. On a still picture a translation does not move at all: it moves only when its
+  text moves by a quarter of a line height, turns by 2° or changes its size by a quarter, and a menu item read together
+  with its neighbour keeps its place. On 40 frames of a still game screen, 279 small moves sent to OBS dropped to none.
+- A line with fewer than three letters in a row ("go.") can now end a block; it is still never translated on its own.
+- **TranslateGemma 27b** in *Translation* → *Model*, the next size after 12b (17.4 GB download, about 17 GB of graphics
+  memory, the best translations of the three). Choosing a model bigger than the graphics card writes a warning: part of it
+  would run on the processor and translate much more slowly. The 27b model has not been tested; the test PC has 16 GB.
+- **Areas to read**: *OK* confirms and closes, *Apply* saves without closing. Changed areas take effect at once, also while
+  translating, without a restart, and while the window is open every area shows its number in OBS where its translations
+  will appear.
+- **Background box and shadow** in *Look of translations*, two smooth settings in the background colour. *Background box*,
+  0 to 40: at 0 there is none, from 1 to 4 a box around the translation itself comes in, at 8 (the default, as before)
+  it covers the original text with a margin of 8 pixels, and above that the margin grows; below 8 the original text
+  shows next to a shorter translation. *Shadow around letters*, 0 to 20 pixels: a soft shadow without edges that follows
+  the letters, from none to large; 0 is the default. Its *intensity*, 0 to 100 %, makes it lighter or darker, apart from
+  the opacity of the box. Stored as `padding`, `shadow` and `shadow_strength` in the look.
+- The address of the overlay source carries a fingerprint of the page instead of the version, so OBS loads the page again
+  whenever it changes.
+
 ## 0.7.0 - 2026-11-20
 
 - **In Slovak**: the whole program is also in Slovak, including the guide, the details and the list of changes. The button

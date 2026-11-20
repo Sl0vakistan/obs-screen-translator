@@ -14,8 +14,13 @@ TEXTS = {
     "Translate to": "Prekladať do",
     "Model": "Model",
     "This PC: {card} with {memory} GB of graphics memory.": "Tento počítač: {card} s {memory} GB pamäte grafiky.",
-    "TranslateGemma 12b: best translations, about 7.5 GB of graphics memory": "TranslateGemma 12b: najlepšie preklady, asi 7,5 GB pamäte grafiky",
     "TranslateGemma 4b: weaker translations, about 2.7 GB of graphics memory": "TranslateGemma 4b: slabšie preklady, asi 2,7 GB pamäte grafiky",
+    "TranslateGemma 12b: recommended, about 7.5 GB of graphics memory": "TranslateGemma 12b: odporúčaný, asi 7,5 GB pamäte grafiky",
+    "TranslateGemma 27b: best translations, about 17 GB of graphics memory": "TranslateGemma 27b: najlepšie preklady, asi 17 GB pamäte grafiky",
+    "{model} needs about {need} GB of graphics memory and this graphics card has {memory} GB: part of the model runs on "
+    "the processor and it translates much more slowly.":
+        "{model} potrebuje asi {need} GB pamäte grafiky a táto grafická karta má {memory} GB: časť modelu pobeží na procesore "
+        "a bude prekladať oveľa pomalšie.",
     "Game": "Hra",
     "Source in OBS": "Zdroj v OBS",
     "Refresh": "Obnoviť",
@@ -111,15 +116,15 @@ TEXTS = {
     "OBS is not reachable, retrying in 3 s": "OBS nie je dostupný, ďalší pokus o 3 s",
     "Drag a rectangle around each part you want translated (yellow). With no rectangle the whole picture is read. "
     "To show the translation of an area somewhere else, choose the area below and drag the place where it should be shown "
-    "(blue). The place keeps the proportions of its area.":
+    "(blue). The place keeps the proportions of its area. Apply shows the changes in OBS at once and keeps this window open.":
         "Potiahnite obdĺžnik okolo každej časti, ktorú chcete prekladať (žltý). Bez obdĺžnika sa číta celý obraz. "
         "Ak sa má preklad oblasti ukázať inde, vyberte oblasť nižšie a potiahnite miesto, kde sa má ukázať (modré). "
-        "Miesto drží pomer strán svojej oblasti.",
+        "Miesto drží pomer strán svojej oblasti. Použiť ukáže zmeny v OBS hneď a toto okno nechá otvorené.",
     "Draw areas to read": "Kresliť oblasti na čítanie",
     "Draw where area": "Kresliť, kde sa oblasť",
     "is shown": "ukáže",
     "Show it where it is read": "Ukázať tam, kde sa číta",
-    "Use": "Použiť",
+    "Apply": "Použiť",
     "Remove last": "Odobrať poslednú",
     "Remove all": "Odobrať všetky",
     "Cancel": "Zrušiť",
@@ -138,6 +143,9 @@ TEXTS = {
     "Italic": "Kurzíva",
     "Text colour": "Farba textu",
     "Background": "Pozadie",
+    "Background box": "Hranaté pozadie",
+    "Shadow around letters": "Tieň okolo písma",
+    "intensity": "intenzita",
     "opacity": "krytie",
     "Outline": "Obrys",
     "px, colour": "px, farba",
@@ -147,9 +155,9 @@ TEXTS = {
     "Centre": "Na stred",
     "Right": "Vpravo",
     "While translating, OBS shows a sample translation with this look as long as this window is open.\n"
-    "Opacity and outline are shown exactly only in OBS.":
+    "Opacity, outline and shadow are shown exactly only in OBS.":
         "Kým beží preklad a toto okno je otvorené, OBS ukazuje vzorový preklad s týmto vzhľadom.\n"
-        "Krytie a obrys presne ukáže len OBS.",
+        "Krytie, obrys a tieň presne ukáže len OBS.",
     "This is how the translations will look": "Takto budú vyzerať preklady",
     "Shown in OBS source": "Ukazuje sa v zdroji OBS",
     "chosen for each area": "vyberá sa pre každú oblasť",
@@ -216,10 +224,10 @@ GUIDE = """# Čo treba
 
 # Nastavenie
 - Preklad > Prekladať z / Prekladať do: jazyk hry a jazyk vašich divákov. Cieľový jazyk je na začiatku jazyk Windows.
-- Preklad > Model: TranslateGemma 12b prekladá najlepšie a potrebuje asi 7,5 GB pamäte grafiky; 4b potrebuje asi 2,7 GB a prekladá horšie. Riadok pod ním ukazuje grafickú kartu tohto počítača. Model, ktorý na počítači ešte nie je, sa stiahne pri ďalšom stlačení Spustiť.
+- Preklad > Model: TranslateGemma 4b (asi 2,7 GB pamäte grafiky, slabšie preklady), 12b (asi 7,5 GB, odporúčaný) alebo 27b (asi 17 GB, najlepšie preklady; na karte so 16 GB a menej beží časť modelu na procesore a prekladá oveľa pomalšie). Riadok pod ním ukazuje grafickú kartu tohto počítača. Model, ktorý na počítači ešte nie je, sa stiahne pri ďalšom stlačení Spustiť.
 - Hra > Zdroj v OBS: zdroj s hrou. Jediná zachytávacia karta v scéne, ktorá ide do vysielania, sa vyberie sama.
-- Hra > Oblasti na čítanie: nepovinné obdĺžniky okolo častí, ktoré sa majú prekladať, napríklad okolo titulkov. Bez nich sa číta celý obraz. Pre každú oblasť môžete nakresliť aj miesto, kde sa má jej preklad ukázať, ak nie cez pôvodný text. To miesto drží pomer strán svojej oblasti, takže preklad sa nikdy nezdeformuje.
-- Na obraze > Vzhľad: písmo, veľkosť, farby, pozadie, obrys a zarovnanie. Jeden vzhľad pre všetky oblasti alebo vlastný vzhľad pre ktorúkoľvek oblasť. Kým je editor otvorený, OBS ukazuje vzorový preklad. Každá oblasť sa môže ukazovať aj vo vlastnom zdroji OBS: Nový zdroj... pridá ďalší zdroj prehliadača, ktorý môžete v OBS samostatne posúvať, zobrazovať a skrývať.
+- Hra > Oblasti na čítanie: nepovinné obdĺžniky okolo častí, ktoré sa majú prekladať, napríklad okolo titulkov. Bez nich sa číta celý obraz. Pre každú oblasť môžete nakresliť aj miesto, kde sa má jej preklad ukázať, ak nie cez pôvodný text. To miesto drží pomer strán svojej oblasti, takže preklad sa nikdy nezdeformuje. OK výber potvrdí; Použiť ukáže zmeny v OBS hneď a okno nechá otvorené a kým je otvorené, každá oblasť ukazuje v OBS svoje číslo tam, kde sa objavia jej preklady.
+- Na obraze > Vzhľad: písmo, veľkosť, farby, pozadie a jeho veľkosť, obrys a zarovnanie. Hranaté pozadie: pri 0 žiadne, plynulo rastie a pri 8 zakryje pôvodný text. Tieň okolo písma: mäkký tieň bez hrán, ktorý sleduje tvar písmen, od žiadneho po veľký; intenzita ho zosvetlí alebo stmaví. Jeden vzhľad pre všetky oblasti alebo vlastný vzhľad pre ktorúkoľvek oblasť. Kým je editor otvorený, OBS ukazuje vzorový preklad. Každá oblasť sa môže ukazovať aj vo vlastnom zdroji OBS: Nový zdroj... pridá ďalší zdroj prehliadača, ktorý môžete v OBS samostatne posúvať, zobrazovať a skrývať.
 - Na obraze > Kláves zobraziť/skryť: jeden kláves, ktorý zobrazí a skryje všetky zdroje prekladu z ktoréhokoľvek okna, aj zo Stream Decku.
 - Spustiť preklad hneď po otvorení programu: nabudúce netreba stláčať Spustiť.
 - Tlačidlo vedľa Pomocníka prepína jazyk programu medzi slovenčinou a angličtinou. Každé okno sa dá zväčšiť aj zmenšiť.
@@ -228,7 +236,8 @@ Potom stlačte Spustiť. V scéne, ktorá ide do vysielania, sa objaví zdroj pr
 
 # Počas streamu
 - Keď v OBS skryjete zdroj prekladu, oblasti, ktoré sa v ňom ukazujú, sa prestanú čítať. Keď sú skryté všetky, napríklad klávesom zobraziť/skryť, čítanie aj preklad sa pozastavia.
-- Zmena jazyka, modelu alebo oblasti počas prekladu preklad sama reštartuje.
+- Zmena jazyka alebo modelu počas prekladu preklad sama reštartuje; zmenené oblasti platia hneď.
+- Naklonený text, napríklad telefón v ruke, sa preloží v rovnakom uhle a preklad nasleduje malé pohyby svojho textu namiesto blikania. Na statickom obraze sa preklady nehýbu.
 - Nechajte toto okno otvorené. Keď ho zavriete, preklady z obrazu zmiznú a prekladový model sa uvoľní z grafickej karty.
 
 # Ollama
@@ -248,7 +257,7 @@ Ollama je bezplatný program, v ktorom na tomto počítači beží prekladový m
 - Sťahovanie modelu sa zastavilo: skontrolujte pripojenie na internet a voľné miesto na disku a znova stlačte Spustiť. Sťahovanie pokračuje tam, kde skončilo.
 - Preklady trvajú niekoľko sekúnd: model sa nezmestí do pamäte grafiky, napríklad vedľa náročnej hry. Vyberte TranslateGemma 4b (pozri Ollama).
 - Na obraze nie sú preklady: zdroj prekladu (Translation overlay alebo ten, ktorý ste pridali) je skrytý, nie je v scéne, ktorá ide do vysielania, alebo je vo vnorenej scéne.
-- Text, ktorý sa hýbe, ostane bez prekladu, kým chvíľu nezastane. Je to zámer: takto sa preskočia nápisy a evidenčné čísla áut.
+- Text, ktorý sa rýchlo hýbe, ostane bez prekladu, kým nespomalí. Je to zámer: takto sa pri otáčaní kamery preskočia nápisy a evidenčné čísla áut. Malé pohyby, napríklad telefónu v ruke, preklad nasleduje.
 - Prvý preklad po prestávke mešká: model sa načítava, čo trvá asi 12 sekúnd.
 - Cyrilika, arabské písmo, kórejčina a iné písma sa zatiaľ nečítajú. Latinka a čínština áno.
 """

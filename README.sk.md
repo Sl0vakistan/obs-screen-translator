@@ -41,8 +41,9 @@ informácie > Spustiť aj tak*. Ak nepodpísaný inštalátor spúšťať nechce
 
 1. Spustite OBS a *OBS Screen Translator* z ponuky Štart, v ľubovoľnom poradí. Program na OBS počká.
 2. Skontrolujte jazyky v **Prekladať z** a **Prekladať do** v časti *Preklad*. Cieľový jazyk je na začiatku jazyk vášho
-   Windows. **Model** vyberá medzi TranslateGemma 12b (najlepšie preklady, asi 7,5 GB pamäte grafiky) a 4b (slabšie, asi
-   2,7 GB); riadok pod ním ukazuje grafickú kartu vášho počítača a jej pamäť.
+   Windows. **Model** vyberá medzi TranslateGemma 4b (slabšie preklady, asi 2,7 GB pamäte grafiky), 12b (odporúčaný,
+   asi 7,5 GB) a 27b (najlepšie preklady, asi 17 GB); riadok pod ním ukazuje grafickú kartu vášho počítača a jej pamäť.
+   Model väčší než karta beží sčasti na procesore a prekladá oveľa pomalšie; okno na to upozorní.
 3. Skontrolujte **Zdroj v OBS** v časti *Hra*. Ak je v scéne, ktorá ide do vysielania, práve jedna zachytávacia karta,
    vyberie sa sama; rovnako jediné zachytenie hry, okna alebo obrazovky. Inak vyberte hru zo zoznamu. *Obnoviť* načíta
    zoznam zdrojov z OBS znova.
@@ -51,9 +52,12 @@ informácie > Spustiť aj tak*. Ak nepodpísaný inštalátor spúšťať nechce
    *Odobrať poslednú* a *Odobrať všetky* obdĺžniky odoberú; bez obdĺžnika sa číta celý obraz. Preklad sa kreslí cez
    pôvodný text, ak mu nedáte iné miesto: zvoľte *Kresliť, kde sa oblasť [číslo] ukáže* a potiahnite miesto (modré, so
    šípkou od oblasti). Miesto drží pomer strán svojej oblasti, takže preklad sa tam presunie a zväčší či zmenší bez
-   zdeformovania. *Ukázať tam, kde sa číta* to vráti. *Použiť* výber potvrdí.
+   zdeformovania. *Ukázať tam, kde sa číta* to vráti. *OK* výber potvrdí;
+   *Použiť* oblasti uloží bez zavretia okna a zmeny sa hneď ukážu v OBS. Kým je okno otvorené, každá oblasť ukazuje v OBS
+   svoje číslo tam, kde sa objavia jej preklady.
 5. Voliteľne **Vzhľad** → *Upraviť...* otvorí *Vzhľad prekladov*: písmo, veľkosť (ako pôvodný text alebo pevná), tučné,
-   kurzíva, farba textu, farba a krytie pozadia, obrys a zarovnanie. *Nastavenie pre* určuje, či meníte predvolený
+   kurzíva, farba textu, farba a krytie pozadia, hranaté pozadie (0 žiadne, plynulo rastie, pri 8 zakryje pôvodný text),
+   tieň okolo písma (mäkký tieň bez hrán, od žiadneho po veľký, s vlastnou intenzitou), obrys a zarovnanie. *Nastavenie pre* určuje, či meníte predvolený
    vzhľad, ktorý používajú všetky oblasti, alebo vzhľad jednej oblasti; oblasť môže ostať pri predvolenom vzhľade alebo
    dostať vlastný. Zmeny platia hneď a kým je editor otvorený, OBS ukazuje vzorový preklad s upravovaným vzhľadom.
    **Ukazuje sa v zdroji OBS** pošle preklady oblasti do iného zdroja prehliadača: *Nový zdroj...* ho pridá do OBS,
@@ -123,7 +127,8 @@ text na preklad; nič neodchádza z počítača.
 1. Štyrikrát za sekundu si program cez vstavaný WebSocket server vypýta od OBS snímku zdroja s hrou.
 2. [RapidOCR](https://github.com/RapidAI/RapidOCR) (modely PP-OCR) nájde a prečíta text v celej snímke. Beží na grafickej
    karte cez DirectML, ktorý funguje na každej karte s DirectX 12, alebo na procesore.
-3. Riadky, ktoré patria k sebe (dvojriadkový titulok, odsek správy), sa spoja do jedného bloku.
+3. Riadky, ktoré patria k sebe (dvojriadkový titulok, odsek správy), sa spoja do jedného bloku. Každý riadok sa meria
+   v jeho vlastnom smere, takže naklonený text, napríklad telefón v ruke, sa spojí správne a preloží v rovnakom uhle.
 4. Blok preloží [TranslateGemma](https://ollama.com/library/translategemma) cez Ollamu. Vety idú po jednej hneď, ako sa
    objavia; krátke nápisy, napríklad položky menu, v dávkach do 12 kusov. Ollama pri každej požiadavke strávi asi 0,35 s
    ešte pred prácou modelu, preto program posiela text priamo llama-serveru, ktorý Ollama pre model spustila, s rovnakou
@@ -135,8 +140,10 @@ text na preklad; nič neodchádza z počítača.
 Do modelu ide len nový text. Text, ktorý na obraze ostáva, sa preloží raz, a každý preklad sa ukladá na disk, takže menu,
 ktoré už program videl, sa ukáže hneď, aj po reštarte.
 
-Preklad sa zobrazí, až keď sa text dvakrát po sebe prečíta na tom istom mieste. Text, ktorý sa hýbe s kamerou (nápisy a
-značky áut vo svete hry), preto ostáva bez prekladu, kým obraz nezastane.
+Preklad sa zobrazí, až keď sa text dvakrát po sebe prečíta takmer na tom istom mieste, takže text, ktorý cez obraz prebehne
+s kamerou (nápisy a evidenčné čísla áut), ostane bez prekladu. Zobrazený preklad potom nasleduje svoj text, kým sa hýbe len
+trochu, napríklad telefón v ruke, a plynulo sa presúva namiesto blikania; na statickom obraze sa nehýbe vôbec. Starý preklad ostane, kým sa nepreloží text, ktorý
+ho nahradil.
 
 ## Čo treba
 
@@ -144,7 +151,7 @@ značky áut vo svete hry), preto ostáva bez prekladu, kým obraz nezastane.
 - OBS Studio. Program vznikol a bol skúšaný s OBS 33. Nastavenia servera WebSocket číta zo súboru
   `plugin_config\obs-websocket\config.json`; verzie OBS, ktoré ich ešte držia v `global.ini`, nie sú podporované.
 - Ollama; program ju vie nainštalovať. Model `translategemma:12b` potrebuje asi 7,5 GB pamäte grafiky; `translategemma:4b` asi 2,7 GB a prekladá citeľne
-  horšie.
+  horšie; `translategemma:27b` (stiahnutie 17,4 GB) asi 17 GB a kartu s viac než 16 GB pamäte. Model 27b sa neskúšal.
 - Grafická karta s DirectX 12 na čítanie textu. Bez nej čítanie beží na procesore a zamestná niekoľko jadier.
 
 ## Jazyky
@@ -208,7 +215,9 @@ a skrytie klávesou a so skúšobným obrázkom v bežiacom OBS dva zdroje prekl
 skrytie jedného zdroja, pridanie a odstránenie zdroja v editore vzhľadu a presunutie miesta oblasti v *Oblastiach na čítanie*.
 Okná sa kontrolovali v tmavom aj svetlom režime na displeji 4K so zväčšením 125 %. Verzia 0.7.0: program po anglicky aj
 po slovensky s prepnutím počas prekladu, výber modelu s uvoľnením predošlého, zväčšenie aj zmenšenie každého okna a pomer
-strán presunutej oblasti pri kreslení aj v OBS.
+strán presunutej oblasti pri kreslení aj v OBS. Verzia 0.8.0: naklonený text a pokojné preklady na 40 snímkach telefónu
+pohybovaného ako v ruke a v bežiacom OBS s tým istým telefónom, ktorý otáčal a posúval skript, *OK* a *Použiť*
+v *Oblastiach na čítanie* so zmenou oblastí počas prekladu, hranaté pozadie a tieň okolo písma.
 
 Skúšalo sa len sčasti:
 
@@ -228,7 +237,8 @@ než 33 a celé živé vysielanie. Oblasti v skúškach kreslil skript, ktorý s
 - Preklad je taký dobrý, aký je lokálny model. Slang občas netrafí a názov značky, ktorý vyzerá ako slovo, vie preložiť
   nezmyslom.
 - Preklad dlhší než originál sa zmenší najviac na 70 % pôvodnej veľkosti a potom presiahne cez susedov.
-- Text, ktorý sa hýbe, sa neprekladá; text vo svete hry sa preloží, keď kamera stojí.
+- Text, ktorý sa rýchlo hýbe, sa neprekladá; text vo svete hry sa preloží, keď kamera spomalí.
+- Naklonený text sa kreslí v jeho uhle, ale rovno: preklad je otočený obdĺžnik, nie v perspektíve.
 - Chránené video, ktoré OBS ukazuje ako čierny obraz, sa prečítať nedá.
 - Po odinštalovaní ostanú nastavenia a uložené preklady v `%APPDATA%\OBS Screen Translator`.
 

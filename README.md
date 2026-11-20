@@ -43,8 +43,9 @@ If you would rather not run an unsigned installer, run the program from source (
 
 1. Start OBS and *OBS Screen Translator* from the Start menu, in any order. The program waits for OBS.
 2. Check the languages in **Translate from** and **Translate to** under *Translation*. The target language starts as the
-   language of your Windows. **Model** chooses between TranslateGemma 12b (best, about 7.5 GB of graphics memory) and 4b
-   (weaker, about 2.7 GB); the line below it shows the graphics card of your PC and its memory.
+   language of your Windows. **Model** chooses between TranslateGemma 4b (weaker, about 2.7 GB of graphics memory), 12b
+   (recommended, about 7.5 GB) and 27b (best, about 17 GB); the line below it shows the graphics card of your PC and its
+   memory. A model bigger than the card runs partly on the processor and translates much more slowly; the window says so.
 3. Check **Source in OBS** under *Game*. If the scene that is on air has exactly one capture card, it is chosen for you; the same
    goes for a single game capture, window capture or display capture. Otherwise pick the game from the list. *Refresh*
    reads the list of sources from OBS again.
@@ -54,9 +55,12 @@ If you would rather not run an unsigned installer, run the program from source (
    translation is drawn over its original text unless you give it another place: choose *Draw where area [number] is
    shown* and drag the place (blue, with an arrow from the area). The place keeps the proportions of its area, so the
    translation is moved there and scaled without being squeezed or stretched. *Show it where it is read* undoes that.
-   *Use* confirms.
+   *OK* confirms; *Apply* saves the areas without closing the window, and the changes show in OBS at once. While the
+   window is open, every area shows its number in OBS where its translations will appear.
 5. Optional: **Look** → *Edit...* opens *Look of translations*: font, size (the size of the original text or a fixed size), bold,
-   italic, text colour, background colour and opacity, outline and alignment. *Settings for* chooses whether you change
+   italic, text colour, background colour and opacity, a background box (0 none, it grows smoothly, at 8 it covers the
+   original text), a shadow around the letters (a soft shadow without edges, from none to large, with its own intensity), outline and
+   alignment. *Settings for* chooses whether you change
    the default look, which every area uses, or the look of one area; an area can keep the default look or get its own.
    Changes apply at once, and while the editor is open OBS shows a sample translation with the look you are editing.
    **Shown in OBS source** sends the translations of an area to another browser source: *New source...* adds one to OBS,
@@ -127,7 +131,9 @@ text to translate; nothing leaves your computer.
 1. Four times a second the program asks OBS for a frame of the game source through the built-in WebSocket server.
 2. [RapidOCR](https://github.com/RapidAI/RapidOCR) (PP-OCR models) finds and reads the text in the whole frame. It runs on
    the graphics card through DirectML, which works on any DirectX 12 card, or on the processor.
-3. Lines that belong together (a two-line subtitle, a paragraph of a message) are joined into one block.
+3. Lines that belong together (a two-line subtitle, a paragraph of a message) are joined into one block. Every line is
+   measured along its own direction, so tilted text, such as a phone in a hand, is joined correctly and translated at the
+   same angle.
 4. A block is translated by [TranslateGemma](https://ollama.com/library/translategemma) served by Ollama. Sentences go one
    at a time as soon as they appear; short labels such as menu items go in batches of up to 12. Ollama spends about 0.35 s
    on every request before the model starts working, so the program sends the text straight to the llama-server that
@@ -139,8 +145,10 @@ text to translate; nothing leaves your computer.
 Only new text reaches the model. A text that stays on screen is translated once, and every translation is stored on disk,
 so a menu seen before appears at once, also after a restart.
 
-A translation is shown only after its text has been read twice at the same place. Text that moves with the camera, such as
-signs and number plates in the game world, is therefore left alone until the picture stands still.
+A translation is shown only after its text has been read twice in nearly the same place, so text that sweeps across the
+picture with the camera, such as signs and number plates, is left alone. Once shown, a translation follows its text while it
+moves a little, like a phone in a hand, and glides along instead of flickering; on a still picture it does not move at all. An old translation stays until the text that
+replaced it is translated.
 
 ## Requirements
 
@@ -148,7 +156,8 @@ signs and number plates in the game world, is therefore left alone until the pic
 - OBS Studio. The program was developed and tested with OBS 33. It reads the WebSocket settings from
   `plugin_config\obs-websocket\config.json`; OBS versions that still keep them in `global.ini` are not supported.
 - Ollama; the program can install it. The model `translategemma:12b` needs about 7.5 GB of graphics memory; `translategemma:4b` needs about 2.7 GB and
-  translates noticeably worse.
+  translates noticeably worse; `translategemma:27b` (17.4 GB download) needs about 17 GB and a card with more memory than
+  16 GB. The 27b model has not been tested.
 - A DirectX 12 graphics card for reading text. Without one the reading runs on the processor and keeps several cores busy.
 
 ## Languages
@@ -176,12 +185,12 @@ program.
 | `regions` | `[]` | Parts of the picture that are read, each with `box` (left, top, right and bottom edge in fractions of the frame), `style` (`null` for the default look, or a look of its own with the same keys as `style`), `display` (`null` to draw the translations over the original text, or the box where they are drawn) and `overlay` (which entry of `overlays` draws them, counted from 0). Empty means the whole picture. Set in the window. |
 | `start_automatically` | `false` | Start translating when the program opens. Set in the window. |
 | `hotkey` | none | The show/hide key: Windows key code, modifiers (1 Alt, 2 Ctrl, 4 Shift) and the label shown in the window. Set in the window. |
-| `style` | Segoe UI Semibold, white on black 85 % | The default look: `font`, `size` (0 = the size of the original text, else pixels in a 1080p picture), `bold`, `italic`, `color`, `background`, `opacity` (0 to 1), `outline` (pixels), `outline_color` and `align` (`auto`, `left`, `center`, `right`). Set in the window. |
+| `style` | Segoe UI Semibold, white on black 85 % | The default look: `font`, `size` (0 = the size of the original text, else pixels in a 1080p picture), `bold`, `italic`, `color`, `background`, `opacity` (0 to 1), `outline` (pixels), `outline_color`, `align` (`auto`, `left`, `center`, `right`) `padding` (the background box: 0 none, 1 to 4 a box around the translation coming in, 8 covers the original text with a margin of 8 pixels, more adds margin) `shadow` (a soft shadow around the letters, 0 to 20 pixels) and `shadow_strength` (its intensity, 0 to 1). Set in the window. |
 | `scenes` | `[]` | Scenes that get a translation source when it is created. Empty means the scene that is on air at that moment. |
 | `overlays` | one source, `Translation overlay` | Browser sources that draw the translations, each `{"name": ...}`. The first one serves the whole picture and every area that has no other. Set in the window. |
 | `create_overlay_source` | `true` | Create the translation sources that do not exist, and keep their addresses current. |
 | `context` | a sentence about games | One or two English sentences telling the model what kind of text it gets and how to address the reader. |
-| `model` | `translategemma:12b` | Ollama model, chosen in the window (`translategemma:12b` or `translategemma:4b`). Another Ollama model can be written here; that is untested. A missing model is downloaded on Start. |
+| `model` | `translategemma:12b` | Ollama model, chosen in the window (`translategemma:4b`, `translategemma:12b` or `translategemma:27b`). Another Ollama model can be written here; that is untested. A missing model is downloaded on Start. |
 | `ollama_url` | `http://127.0.0.1:11434` | Ollama server. It can run on another PC. |
 | `ocr_on_gpu` | `true` | Read text on the graphics card. `false` uses the processor. |
 | `ocr_threads` | `8` | Processor threads for reading text when the graphics card is not used. |
@@ -252,7 +261,9 @@ translation sources with an area drawn in another place, hiding one source, addi
 editor and moving an area's place in *Areas to read*. The windows were checked in dark and light mode on a 4K display at
 125 %. Version 0.7.0: the program in English and Slovak with switching while it translates, the choice of the model with
 the previous model unloaded, every window made bigger and smaller, and the proportions of a moved area while drawing it
-and in OBS.
+and in OBS. Version 0.8.0: tilted text and steady translations on 40 pictures of a phone moved as in a hand and in a running
+OBS with the same phone turned and moved by a script, *OK* and *Apply* in *Areas to read* with the areas changed while
+translating, and the background box and the shadow around the letters.
 
 Tested only in part:
 
@@ -274,7 +285,8 @@ mouse, not by hand.
 - The translation is as good as the local model. Slang is sometimes wrong, and a brand name that looks like a word can get
   a nonsense translation.
 - A translation longer than the original is shrunk to 70 % of the original size at most and then grows over its neighbours.
-- Text that moves is not translated; text in the game world is translated when the camera stands still.
+- Text that moves fast is not translated; text in the game world is translated when the camera slows down.
+- Tilted text is drawn at its angle, but flat: a translation is a turned rectangle, not one in perspective.
 - Protected video that OBS shows as a black picture cannot be read.
 - Uninstalling leaves the settings and stored translations in `%APPDATA%\OBS Screen Translator`.
 

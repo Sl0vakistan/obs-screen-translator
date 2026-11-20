@@ -3,6 +3,34 @@
 Anglická verzia: [CHANGELOG.md](CHANGELOG.md). Do verzie 0.6.0 bol program len po anglicky, preto sú názvy v okne pri
 starších verziách anglické.
 
+## 0.8.0 - 2026-11-20
+
+- **Naklonený text**: každý riadok sa meria v jeho vlastnom smere, zo štyroch rohov, ktoré vráti čítanie textu. Telefón
+  držaný šikmo sa preloží v rovnakom uhle, riadky jednej bubliny četu sa spoja správne a výška riadku je skutočná, takže
+  preklady už nie sú príliš veľké a neprekrývajú sa.
+- **Pokojné preklady**: preklad na obraze nasleduje svoj text, kým sa hýbe len trochu, napríklad telefón v ruke, a plynulo
+  sa presúva namiesto toho, aby zmizol a znova sa objavil. Nový text musí jedno čítanie postáť, takže text, ktorý cez obraz
+  prebehne s kamerou, sa preskočí. Starý preklad ostane, kým sa nepreloží text, ktorý ho nahradil, riadok prečítaný
+  samostatne sa nekreslí cez blok, do ktorého patrí, a poznámka v zátvorke, ktorú model pridá a ktorá v texte nie je
+  (napríklad že je veta nedokončená), sa vynechá. Na 40 snímkach telefónu pohybovaného ako v ruke verzia 0.7.0 preklady
+  87-krát ukázala a 83-krát skryla a pýtala si 63 prekladov; 0.8.0 ukázala každý zo svojich 7 blokov raz, neskryla žiadny
+  a pýtala si 7 prekladov. Na statickom obraze sa preklad vôbec nehýbe: pohne sa, až keď sa jeho text posunie o štvrtinu
+  výšky riadku, otočí o 2° alebo zmení veľkosť o štvrtinu, a položka menu prečítaná spolu so susednou ostane na mieste.
+  Na 40 snímkach statickej obrazovky hry kleslo 279 drobných posunov poslaných do OBS na nulu.
+- Riadok s menej ako tromi písmenami za sebou („go.“) môže teraz uzavrieť blok; samostatne sa stále neprekladá.
+- **TranslateGemma 27b** v *Preklad* → *Model*, ďalšia veľkosť po 12b (stiahnutie 17,4 GB, asi 17 GB pamäte grafiky,
+  najlepšie preklady z troch). Pri výbere modelu väčšieho než grafická karta okno upozorní, že časť modelu by bežala na
+  procesore a prekladala oveľa pomalšie. Model 27b sa neskúšal; skúšobný počítač má 16 GB.
+- **Oblasti na čítanie**: *OK* potvrdí a zavrie, *Použiť* uloží bez zavretia. Zmenené oblasti platia hneď, aj počas
+  prekladu, bez reštartu, a kým je okno otvorené, každá oblasť ukazuje v OBS svoje číslo tam, kde sa objavia jej preklady.
+- **Hranaté pozadie a tieň** vo *Vzhľade prekladov*, dve plynulé nastavenia vo farbe pozadia. *Hranaté pozadie*, 0 až
+  40: pri 0 žiadne, od 1 po 4 sa objaví obdĺžnik okolo samotného prekladu, pri 8 (predvolené, ako doteraz) zakryje
+  pôvodný text s okrajom 8 bodov a nad 8 okraj rastie; pod 8 vedľa kratšieho prekladu presvitá pôvodný text. *Tieň okolo
+  písma*, 0 až 20 bodov: mäkký tieň bez hrán, ktorý sleduje tvar písmen, od žiadneho po veľký; predvolená je 0. Jeho
+  *intenzita*, 0 až 100 %, ho zosvetlí alebo stmaví, nezávisle od krytia obdĺžnika. Uložené ako `padding`, `shadow`
+  a `shadow_strength` vo vzhľade.
+- Adresa zdroja prekladu namiesto verzie obsahuje odtlačok stránky, takže OBS stránku načíta znova po každej jej zmene.
+
 ## 0.7.0 - 2026-11-20
 
 - **Po slovensky**: celý program je aj po slovensky, vrátane návodu, podrobností a zoznamu zmien. Tlačidlo vedľa
