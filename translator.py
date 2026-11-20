@@ -23,7 +23,7 @@ import numpy as np
 import websockets
 from rapidocr import RapidOCR
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE
@@ -35,6 +35,7 @@ DEFAULTS = {
     "create_overlay_source": True,
     "source_language": "en",
     "target_language": "sk",
+    "region": [0, 0, 1, 1],
     "context": "The text is shown on screen in a video game (subtitles of spoken dialogue, messages, hints, menu items). "
                "Leave names of people, places, brands and anything that is not a real word exactly as written.",
     "model": "translategemma:12b",
@@ -133,6 +134,13 @@ async def obs_video_sources():
     return sorted(i["inputName"] for i in inputs if not re.search("audio|wasapi|pulse|alsa|browser|text", i["inputKind"]))
 
 
+async def obs_picture(source):
+    obs = await OBS().connect()
+    data = (await obs.request("GetSourceScreenshot", sourceName=source, imageFormat="png", imageWidth=960))["imageData"]
+    await obs.ws.close()
+    return data.split(",", 1)[1]
+
+
 def same_text(a, b):
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.85
 
@@ -158,6 +166,7 @@ class Translator:
                        f"Please translate the following {src_name} text into {dst_name}:\n\n\n")
         self.cache_file = folder / f"cache_{hashlib.md5((settings['model'] + self.prompt).encode()).hexdigest()[:8]}.json"
         self.cache = json.loads(self.cache_file.read_text(encoding="utf-8")) if self.cache_file.exists() else {}
+        self.obs = None
 
     def ollama(self, path, body=None, timeout=60):
         request = urllib.request.Request(self.s["ollama_url"] + path, data=body and json.dumps(body).encode(),
@@ -201,10 +210,12 @@ class Translator:
 
     def read(self, frame):
         h, w = frame.shape[:2]
-        r = text_reader(self.s)(frame)
+        left, top, right, bottom = (int(a * b) for a, b in zip(self.s["region"], (w, h, w, h)))
+        r = text_reader(self.s)(frame[top:bottom, left:right])
         lines = []
         for box, text, score in zip(r.boxes, r.txts, r.scores) if r.txts else ():
-            x0, y0, x1, y1 = float(box[:, 0].min() / w), float(box[:, 1].min() / h), float(box[:, 0].max() / w), float(box[:, 1].max() / h)
+            x0, y0 = float((box[:, 0].min() + left) / w), float((box[:, 1].min() + top) / h)
+            x1, y1 = float((box[:, 0].max() + left) / w), float((box[:, 1].max() + top) / h)
             if score >= self.s["min_score"] and (y1 - y0) * 1080 >= self.s["min_height"] and re.search(r"[^\W\d_]{3}", text):
                 lines.append((y0, x0, x1, y1, " ".join(text.split())))
         blocks = []
@@ -282,7 +293,7 @@ class Translator:
             return False
 
     async def run(self, publish):
-        obs = await OBS().connect()
+        self.obs = obs = await OBS().connect()
         log("connected to OBS")
         if self.s["create_overlay_source"]:
             await self.prepare_overlay(obs)
@@ -397,6 +408,10 @@ class Translator:
                     publish({"items": []})
                     log("OBS is not reachable, retrying in 3 s")
                     await asyncio.sleep(3)
+                finally:
+                    if self.obs:
+                        await self.obs.ws.close()
+                        self.obs = None
 
     async def preview(self, image, folder):
         self.prepare_model()
@@ -406,6 +421,8 @@ class Translator:
         started = time.perf_counter()
         blocks = self.read(frame)
         log(f"reading took {(time.perf_counter() - started) * 1000:.0f} ms, {len(blocks)} texts")
+        x0, y0, x1, y1 = self.s["region"]
+        cv2.rectangle(frame, (int(x0 * w), int(y0 * h)), (int(x1 * w) - 1, int(y1 * h) - 1), (0, 204, 255), 2)
         for b in blocks:
             cv2.rectangle(frame, (int(b.box[0] * w), int(b.box[1] * h)), (int(b.box[2] * w), int(b.box[3] * h)), (0, 255, 0), 2)
             log(f"  {b.text}\n    -> {self.translate([b.text])[0] or '(no translation)'}")
@@ -441,10 +458,14 @@ class Window:
         self.obs_source = ttk.Combobox(top)
         self.obs_source.grid(row=2, column=1, sticky="ew", padx=(8, 0))
         ttk.Button(top, text="Refresh", command=self.refresh).grid(row=2, column=2, padx=(8, 0))
+        ttk.Label(top, text="Area to read").grid(row=3, column=0, sticky="w", pady=4)
+        self.area = ttk.Label(top)
+        self.area.grid(row=3, column=1, sticky="w", padx=(8, 0))
+        ttk.Button(top, text="Choose...", command=self.choose_area).grid(row=3, column=2, padx=(8, 0))
         self.button = ttk.Button(top, text="Start", command=self.toggle)
-        self.button.grid(row=3, column=0, sticky="w", pady=(10, 0))
+        self.button.grid(row=4, column=0, sticky="w", pady=(10, 0))
         self.status = ttk.Label(top, text="Stopped")
-        self.status.grid(row=3, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
+        self.status.grid(row=4, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
         frame = ttk.Frame(root, padding=(12, 0, 12, 12))
         frame.pack(fill="both", expand=True)
         self.text = tk.Text(frame, height=14, wrap="word", state="disabled")
@@ -456,6 +477,7 @@ class Window:
         self.source.set(next(label for label, code in self.labels.items() if code == self.s["source_language"]))
         self.target.set(next(label for label, code in self.labels.items() if code == self.s["target_language"]))
         self.obs_source.set(self.s["obs_source"])
+        self.show_area()
         for box in (self.source, self.target, self.obs_source):
             box.bind("<<ComboboxSelected>>", self.changed)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -473,6 +495,27 @@ class Window:
                 log(str(e))
             except (OSError, websockets.WebSocketException):
                 log("OBS is not running or its WebSocket server is off. Start OBS and press Refresh.")
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_area(self):
+        x0, y0, x1, y1 = self.s["region"]
+        self.area.configure(text="Whole picture" if self.s["region"] == [0, 0, 1, 1] else
+                            f"{round((x1 - x0) * 100)} % of the width, {round((y1 - y0) * 100)} % of the height")
+
+    def choose_area(self):
+        source = self.obs_source.get().strip()
+        if not source:
+            log("Choose the game source in OBS first.")
+            return
+
+        def work():
+            try:
+                picture = asyncio.run(obs_picture(source))
+                self.messages.put(lambda: AreaPicker(self, picture))
+            except Problem as e:
+                log(str(e))
+            except (OSError, RuntimeError, websockets.WebSocketException) as e:
+                log(f"Could not get a picture from OBS: {e}")
         threading.Thread(target=work, daemon=True).start()
 
     def changed(self, _=None):
@@ -510,6 +553,11 @@ class Window:
         except OSError as e:
             log(f"Could not start: {e}")
         finally:
+            rest = asyncio.all_tasks(self.loop)
+            for task in rest:
+                task.cancel()
+            if rest:
+                self.loop.run_until_complete(asyncio.wait(rest))
             self.loop.run_until_complete(self.loop.shutdown_asyncgens())
             self.loop.close()
             self.loop = None
@@ -542,6 +590,51 @@ class Window:
     def close(self):
         self.stop()
         self.root.destroy()
+
+
+class AreaPicker:
+    def __init__(self, window, picture):
+        self.window = window
+        self.top = top = tk.Toplevel(window.root)
+        top.title("Area to read")
+        top.resizable(False, False)
+        top.transient(window.root)
+        self.image = tk.PhotoImage(data=picture)
+        self.w, self.h = self.image.width(), self.image.height()
+        ttk.Label(top, text="Drag a rectangle around the text you want translated.", padding=8).pack(anchor="w")
+        self.canvas = tk.Canvas(top, width=self.w, height=self.h, highlightthickness=0, cursor="crosshair")
+        self.canvas.pack(padx=8)
+        self.canvas.create_image(0, 0, image=self.image, anchor="nw")
+        x0, y0, x1, y1 = window.s["region"]
+        self.box = [x0 * self.w, y0 * self.h, x1 * self.w, y1 * self.h]
+        self.rect = self.canvas.create_rectangle(*self.box, outline="#ffcc00", width=3)
+        self.canvas.bind("<ButtonPress-1>", self.press)
+        self.canvas.bind("<B1-Motion>", self.drag)
+        buttons = ttk.Frame(top, padding=8)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Use this area", command=self.use).pack(side="left")
+        ttk.Button(buttons, text="Whole picture", command=lambda: self.finish([0, 0, 1, 1])).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Cancel", command=top.destroy).pack(side="right")
+        top.grab_set()
+
+    def press(self, e):
+        self.start = (e.x, e.y)
+
+    def drag(self, e):
+        x, y = min(max(e.x, 0), self.w), min(max(e.y, 0), self.h)
+        self.box = [min(self.start[0], x), min(self.start[1], y), max(self.start[0], x), max(self.start[1], y)]
+        self.canvas.coords(self.rect, *self.box)
+
+    def use(self):
+        x0, y0, x1, y1 = self.box
+        if x1 - x0 >= 0.05 * self.w and y1 - y0 >= 0.03 * self.h:
+            self.finish([round(x0 / self.w, 3), round(y0 / self.h, 3), round(x1 / self.w, 3), round(y1 / self.h, 3)])
+
+    def finish(self, region):
+        self.window.s["region"] = region
+        self.top.destroy()
+        self.window.show_area()
+        self.window.changed()
 
 
 if __name__ == "__main__":

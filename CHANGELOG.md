@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-11-20
+
+- Area to read: *Choose...* in the window shows the current picture of the game source and lets you drag a rectangle
+  around the part to translate. Only that part is read; text outside it is ignored. *Whole picture* switches back. The
+  area can be changed while translating. It is stored in `settings.json` as `region`.
+- `--preview` marks the area in `preview.png`.
+
 ## 0.2.0 - 2026-11-20
 
 - The program has a window: the languages are chosen from lists (164 entries from the TranslateGemma language table), the game

@@ -31,13 +31,19 @@ informácie > Spustiť aj tak*. Ak nepodpísaný inštalátor spúšťať nechce
 1. Spustite OBS a potom *OBS Screen Translator* z ponuky Štart.
 2. Vyberte jazyky v **Translate from** (z akého) a **Translate to** (do akého).
 3. V **Game source in OBS** vyberte zdroj s hrou. *Refresh* načíta zoznam zdrojov z OBS znova.
-4. Stlačte **Start**.
+4. Voliteľne **Area to read** (výrez). *Choose...* ukáže aktuálny obraz hry; myšou potiahnite obdĺžnik okolo časti, ktorú
+   chcete prekladať, napríklad len okolo titulkov, a stlačte *Use this area*. Text mimo obdĺžnika sa ignoruje.
+   *Whole picture* v tom istom okne vráti celý obraz.
+5. Stlačte **Start**.
 
 Pri prvom spustení si program stiahne prekladový model (8,1 GB, raz) a do scény, ktorá práve ide do vysielania, pridá zdroj
 prehliadača *Translation overlay*. Okno vypisuje každý preložený text a čas, ktorý to trvalo.
 
 Jazyk zmeníte výberom iného v okne. Preklad sa v novom jazyku spustí sám, netreba ho predtým zastavovať. Každý jazyk má
-vlastné uložené preklady.
+vlastné uložené preklady. Rovnako sa počas prekladu dá zmeniť výrez.
+
+Menší výrez znamená menej čítania a menej prekladania. Najviac pomôže na obrazovkách plných textu a vtedy, keď vás zaujíma
+len jedna časť obrazu, napríklad titulky; pozri *Namerané*.
 
 Program pracuje, len kým je zdroj prekladu viditeľný v scéne, ktorá ide do vysielania. Keď zdroj skryjete, prestane čítať
 aj prekladať. Na prepínanie jednou klávesou dajte v OBS (*Nastavenia > Klávesové skratky*) akciám *Zobraziť* a *Skryť* tohto
@@ -81,7 +87,7 @@ správne, nech vyberiete akýkoľvek jazyk.
 
 ## Nastavenia
 
-Jazyky a zdroj s hrou sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
+Jazyky, zdroj s hrou a výrez sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
 v `%APPDATA%\OBS Screen Translator` (pri spustení zo zdrojového kódu vedľa `translator.py`). Zmeny platia po novom spustení
 programu. Tabuľka všetkých položiek je v [README.md](README.md#settings). Najdôležitejšie:
 
@@ -108,8 +114,11 @@ inštalátor.
 
 Počítač s Ryzen 9 5950X a RTX 5080, snímka 1080p z plátna 4K, z angličtiny do slovenčiny, `translategemma:12b`:
 
-- Čítanie celej snímky na grafike: 103 až 117 ms v hre a 341 až 395 ms v menu plnom textu. Na procesore s 8 vláknami:
-  290 až 340 ms a asi 565 ms.
+- Čítanie celej snímky na grafike: asi 100 ms v hre (92 až 117 ms) a 255 až 395 ms v menu plnom textu. Na procesore
+  s 8 vláknami: 290 až 340 ms a asi 565 ms.
+- Čítanie len pásu okolo titulkov (60 % šírky, 15 % výšky): 68 až 86 ms v hre a 58 až 68 ms na obrazovke menu, kde celá
+  snímka v tom istom meraní trvala 255 až 269 ms. V hre je zisk malý, lebo väčšinu času zaberie hľadanie textu, nie jeho
+  množstvo.
 - Preklad: titulok 0,5 až 1 s po objavení. Ollama pridáva ku každému volaniu asi 0,35 s, preto idú krátke nápisy v dávkach;
   12 položiek menu trvalo 1,3 s.
 - OBS nevynechal žiadnu vykreslenú snímku v žiadnom behu s približne 3000 snímkami.
@@ -117,8 +126,9 @@ Počítač s Ryzen 9 5950X a RTX 5080, snímka 1080p z plátna 4K, z angličtiny
 
 ## Čo sa skúšalo a čo nie
 
-Vo verzii 0.2.0 sa skúšalo: štart a zastavenie z okna, zmena cieľového jazyka počas prekladu, zostavený aj nainštalovaný
-program proti bežiacemu OBS, vytvorenie zdroja prekladu, tichá inštalácia a odinštalovanie.
+Skúšalo sa: štart a zastavenie z okna, zmena cieľového jazyka počas prekladu, výber výrezu a návrat na celý obraz počas
+prekladu, zostavený aj nainštalovaný program proti bežiacemu OBS, vytvorenie zdroja prekladu, tichá inštalácia
+a odinštalovanie.
 
 Neskúšalo sa: počítač bez Ollamy alebo bez modelu (sťahovanie pri prvom spustení), čítanie textu na procesore v zostavenom
 programe, iná grafika než RTX 5080, Windows 10 a celé živé vysielanie.
