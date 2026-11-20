@@ -2,8 +2,20 @@
 
 Live translation of on-screen text for streamers. The program reads the text in an [OBS Studio](https://obsproject.com/)
 source (a game from a capture card, a game capture, a window), translates it with a language model running on your own PC
-and draws the translation over the original text, on a black semi-transparent background. Viewers see subtitles, messages,
-hints and menus in their language; nothing leaves your computer.
+and draws the translation over the original text or wherever you want it. Viewers see subtitles, messages, hints, phone
+chats and menus in their language; nothing leaves your computer.
+
+- **Reads what you choose**: the whole picture or areas you draw. The translation of an area can be shown in another place
+  and in an OBS source of its own, which you place, crop and hide in OBS like any other source.
+- **Steady on screen**: tilted text, such as a phone in a hand, is translated at its angle; a translation follows small
+  movements of its text without flickering and stands still on a still picture.
+- **Your look**: font, size, colours, a background box and a soft shadow around the letters, for all areas or each one,
+  with a sample in OBS while you edit.
+- **Sets itself up**: it turns on the WebSocket server of OBS, installs Ollama and downloads the TranslateGemma model
+  (4b, 12b or 27b) when you agree. A show/hide key works from any window and from a Stream Deck.
+- **In English and Slovak**, with a guide in the program; 164 languages in the lists.
+
+Download the installer from [Releases](https://github.com/Sl0vakistan/obs-screen-translator/releases/latest).
 
 Slovak version: [README.sk.md](README.sk.md)
 

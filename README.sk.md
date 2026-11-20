@@ -2,8 +2,20 @@
 
 Živý preklad textu z obrazu pre streamerov. Program číta text v zdroji [OBS Studio](https://obsproject.com/) (hra zo
 zachytávacej karty, zachytenie hry, okno), preloží ho jazykovým modelom, ktorý beží vo vašom počítači, a preklad nakreslí
-cez pôvodný text na čiernom polopriehľadnom pozadí. Diváci vidia titulky, správy, pokyny a menu vo svojom jazyku; z počítača
-nič neodchádza.
+cez pôvodný text alebo tam, kam chcete. Diváci vidia titulky, správy, pokyny, čety v telefóne a menu vo svojom jazyku;
+z počítača nič neodchádza.
+
+- **Číta, čo si vyberiete**: celý obraz alebo oblasti, ktoré nakreslíte. Preklad oblasti sa môže ukázať na inom mieste
+  a vo vlastnom zdroji OBS, ktorý v OBS umiestnite, orežete a skryjete ako každý iný zdroj.
+- **Pokojný obraz**: naklonený text, napríklad telefón v ruke, sa preloží v jeho uhle; preklad nasleduje malé pohyby
+  svojho textu bez blikania a na statickom obraze stojí.
+- **Vlastný vzhľad**: písmo, veľkosť, farby, hranaté pozadie a mäkký tieň okolo písma, pre všetky oblasti alebo každú
+  zvlášť, so vzorkou v OBS počas úprav.
+- **Nastaví sa sám**: so súhlasom zapne server WebSocket v OBS, nainštaluje Ollamu a stiahne model TranslateGemma (4b,
+  12b alebo 27b). Kláves zobraziť/skryť funguje z ktoréhokoľvek okna aj zo Stream Decku.
+- **Po slovensky aj po anglicky**, s návodom v programe; v zoznamoch je 164 jazykov.
+
+Inštalátor stiahnete z [Releases](https://github.com/Sl0vakistan/obs-screen-translator/releases/latest).
 
 English version: [README.md](README.md)
 
