@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 - 2026-11-20
+
+- The program has a window: the languages are chosen from lists (164 entries from the TranslateGemma language table), the game
+  source from the list of sources in OBS, and Start and Stop are buttons. Changing a language while translating restarts
+  the translation in the new language.
+- Installer `OBS-Screen-Translator-Setup-<version>.exe` (Inno Setup, per user, no administrator rights), built by
+  `build.ps1` from a PyInstaller bundle. Python is no longer needed to use the program.
+- Text is read on the graphics card through DirectML (`onnxruntime-directml`) instead of PyTorch with CUDA, so any
+  DirectX 12 card works and the bundle stays small. If that fails, the processor is used.
+- `settings.json` is created on the first start (in `%APPDATA%\OBS Screen Translator` for the installed program);
+  `settings.example.json` is gone. The languages are stored as codes.
+- On start the program starts Ollama if it is installed but not running, and downloads the translation model if it is
+  missing. Problems such as a missing Ollama or OBS are reported in the window.
+- The address of the overlay source is kept current, so the source survives a reinstall into another folder.
+- README states plainly that the project is vibe-coded.
+
 ## 0.1.0 - 2026-11-19
 
 Initial public release.

@@ -1,5 +1,8 @@
 settings.json
 cache_*.json
 preview.png
+.venv/
+build/
+dist/
 __pycache__/
 *.pyc
