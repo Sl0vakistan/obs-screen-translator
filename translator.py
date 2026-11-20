@@ -23,7 +23,7 @@ import numpy as np
 import websockets
 from rapidocr import RapidOCR
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 FROZEN = getattr(sys, "frozen", False)
 HERE = pathlib.Path(sys._MEIPASS) if FROZEN else pathlib.Path(__file__).resolve().parent
 DATA = pathlib.Path(os.environ.get("APPDATA", HERE)) / "OBS Screen Translator" if FROZEN else HERE

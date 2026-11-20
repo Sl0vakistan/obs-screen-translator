@@ -22,6 +22,10 @@ Remove-Item "$root\build", "$root\dist" -Recurse -Force -ErrorAction SilentlyCon
     "$root\translator.py"
 if ($LASTEXITCODE) { throw 'PyInstaller failed' }
 
+# Parts the program never uses: OpenCV's video library, Pillow's AVIF module and the text-rotation model.
+Remove-Item "$root\dist\$name\_internal\cv2\opencv_videoio_ffmpeg*.dll", "$root\dist\$name\_internal\PIL\_avif*.pyd",
+    "$root\dist\$name\_internal\rapidocr\models\*_cls_*.onnx"
+
 # License texts of everything that is bundled, as shipped by each package.
 @'
 import importlib.metadata as md, pathlib, re, shutil, sys

@@ -15,14 +15,14 @@ program folder, and copies the license texts shipped by the packages next to it.
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) | text detection and recognition | Apache-2.0 |
 | [PP-OCR models](https://github.com/PaddlePaddle/PaddleOCR) (`PP-OCRv6_det_small`, `PP-OCRv6_rec_small`) | text detection and recognition models | Apache-2.0 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) with [DirectML](https://github.com/microsoft/DirectML) | running the models on the graphics card or processor | MIT |
-| [OpenCV](https://github.com/opencv/opencv) (`opencv-python-headless`) | decoding and drawing images | Apache-2.0; the package ships FFmpeg libraries under LGPL-2.1 |
+| [OpenCV](https://github.com/opencv/opencv) (`opencv-python-headless`) | decoding and drawing images | Apache-2.0; the FFmpeg video library that comes with the package is left out of the program |
 | [NumPy](https://github.com/numpy/numpy) | image arrays | BSD-3-Clause and others listed by the package |
 | [websockets](https://github.com/python-websockets/websockets) | connection to OBS and to the overlay | BSD-3-Clause |
 | [Shapely](https://github.com/shapely/shapely) | geometry of text boxes | BSD-3-Clause; the package ships GEOS under LGPL-2.1 |
 | Pillow, pyclipper, OmegaConf, PyYAML, requests, urllib3, certifi, charset-normalizer, idna, tqdm, colorlog, six and others | dependencies of the above | see `licenses\README.txt` |
 | [PyInstaller](https://pyinstaller.org/) bootloader | starting the bundled program | GPL-2.0-or-later with an exception that allows distributing bundled programs under any license |
 
-The LGPL libraries are shipped as separate files inside the program folder and can be replaced there.
+The LGPL library (GEOS) is shipped as a separate file inside the program folder and can be replaced there.
 
 ## Installed by the user, not bundled
 

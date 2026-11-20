@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-11-20
+
+- Smaller installer. The build leaves out three parts the program never uses: the video library that comes with OpenCV,
+  the AVIF module of Pillow and the text-rotation model. Nothing changes in how the program works.
+
 ## 0.4.0 - 2026-11-20
 
 - Several areas to read: in the *Area to read* dialog you can draw any number of rectangles; *Remove last* and
