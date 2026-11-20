@@ -42,8 +42,9 @@ If you would rather not run an unsigned installer, run the program from source (
 ## Use
 
 1. Start OBS and *OBS Screen Translator* from the Start menu, in any order. The program waits for OBS.
-2. Check the languages in **Translate from** and **Translate to**. The target language starts as the language of your
-   Windows.
+2. Check the languages in **Translate from** and **Translate to** under *Translation*. The target language starts as the
+   language of your Windows. **Model** chooses between TranslateGemma 12b (best, about 7.5 GB of graphics memory) and 4b
+   (weaker, about 2.7 GB); the line below it shows the graphics card of your PC and its memory.
 3. Check **Source in OBS** under *Game*. If the scene that is on air has exactly one capture card, it is chosen for you; the same
    goes for a single game capture, window capture or display capture. Otherwise pick the game from the list. *Refresh*
    reads the list of sources from OBS again.
@@ -51,8 +52,9 @@ If you would rather not run an unsigned installer, run the program from source (
    want translated, for example the subtitles and the phone. You can draw several. Text outside the rectangles is
    ignored. *Remove last* and *Remove all* take rectangles away; with no rectangle the whole picture is read. A
    translation is drawn over its original text unless you give it another place: choose *Draw where area [number] is
-   shown* and drag the place (blue, with an arrow from the area). The translation is moved there and scaled to it. *Show
-   it where it is read* undoes that. *Use* confirms.
+   shown* and drag the place (blue, with an arrow from the area). The place keeps the proportions of its area, so the
+   translation is moved there and scaled without being squeezed or stretched. *Show it where it is read* undoes that.
+   *Use* confirms.
 5. Optional: **Look** → *Edit...* opens *Look of translations*: font, size (the size of the original text or a fixed size), bold,
    italic, text colour, background colour and opacity, outline and alignment. *Settings for* chooses whether you change
    the default look, which every area uses, or the look of one area; an area can keep the default look or get its own.
@@ -65,15 +67,20 @@ If you would rather not run an unsigned installer, run the program from source (
    That key shows and hides the translations whatever window is in front, also when a Stream Deck sends it.
 7. Press **Start**. With **Start translating when this program opens** ticked, the program does that for you next time.
 
+The button next to **Help** switches the program between English and Slovak; until you choose, it follows the language of
+Windows. Every window can be resized; *Areas to read* scales the picture with the window and keeps the proportions of the
+OBS source.
+
 On the first start the program adds a browser source named *Translation overlay* to the scene that is on air. Sources
 added with *New source...* are created the same way when translation starts or restarts.
 
 The **Help** button at the top right has a short guide (*Installation and setup*), the changes of the installed version (*What's new in <version>*), *Details* with the version, the license and the place of the
 settings and stored translations, *Open the settings folder* and a link to this project. The window lists every translated text with the time it took.
 
-To change the language, pick another one in the window. Translation restarts in the new language by itself; you do not have
-to stop it first. Every language keeps its own stored translations. The areas can be changed while translating in the same
-way.
+To change the language or the model, pick another one in the window. Translation restarts by itself; you do not have to
+stop it first. Every language and every model keeps its own stored translations. A model that is not on the PC yet is
+downloaded first, and the model used before is unloaded from the graphics card. The areas can be changed while
+translating in the same way.
 
 Smaller areas mean less to read and less to translate, and no translations drawn over parts of the picture you do not
 care about. They help most on screens full of text; see *Measured*.
@@ -103,9 +110,8 @@ text to translate; nothing leaves your computer.
   downloaded models.
 - To download the model before a stream, press **Start** once and wait for *translation model ready*, or run
   `ollama pull translategemma:12b` in Command Prompt.
-- With less than about 8 GB of free graphics memory, use the smaller model, which translates noticeably worse: set
-  `"model": "translategemma:4b"` in `settings.json` (*Help > Open the settings folder*; 3.3 GB, about 2.7 GB of graphics
-  memory) and start the program again.
+- With less than about 8 GB of free graphics memory, choose *TranslateGemma 4b* in *Translation* → *Model* (3.3 GB, about
+  2.7 GB of graphics memory). It translates noticeably worse and is downloaded on the next **Start**.
 - Ollama keeps the models in `%USERPROFILE%\.ollama\models`. To keep them elsewhere, change *Model location* in Ollama's
   settings (open Ollama from the Start menu) or set the environment variable `OLLAMA_MODELS`, best before the model is
   downloaded.
@@ -157,8 +163,8 @@ correctly yet, whatever language you choose.
 
 ## Settings
 
-The window covers the languages, the game source, the areas to read and where they are shown, the look of translations
-and the OBS sources they go to, the show/hide key and the automatic start. Everything else is in `settings.json`, created on the first start in
+The window covers the languages, the model, the game source, the areas to read and where they are shown, the look of
+translations and the OBS sources they go to, the show/hide key, the automatic start and the language of the program. Everything else is in `settings.json`, created on the first start in
 `%APPDATA%\OBS Screen Translator` (next to `translator.py` when you run from source). Changes apply after a restart of the
 program.
 
@@ -166,6 +172,7 @@ program.
 |---|---|---|
 | `obs_source` | empty | Name of the OBS source to read. Set in the window. |
 | `source_language`, `target_language` | `en`, `sk` | Language codes. Set in the window. |
+| `ui_language` | `null` | Language of the program: `en` or `sk`; `null` follows the language of Windows. Set in the window. |
 | `regions` | `[]` | Parts of the picture that are read, each with `box` (left, top, right and bottom edge in fractions of the frame), `style` (`null` for the default look, or a look of its own with the same keys as `style`), `display` (`null` to draw the translations over the original text, or the box where they are drawn) and `overlay` (which entry of `overlays` draws them, counted from 0). Empty means the whole picture. Set in the window. |
 | `start_automatically` | `false` | Start translating when the program opens. Set in the window. |
 | `hotkey` | none | The show/hide key: Windows key code, modifiers (1 Alt, 2 Ctrl, 4 Shift) and the label shown in the window. Set in the window. |
@@ -174,7 +181,7 @@ program.
 | `overlays` | one source, `Translation overlay` | Browser sources that draw the translations, each `{"name": ...}`. The first one serves the whole picture and every area that has no other. Set in the window. |
 | `create_overlay_source` | `true` | Create the translation sources that do not exist, and keep their addresses current. |
 | `context` | a sentence about games | One or two English sentences telling the model what kind of text it gets and how to address the reader. |
-| `model` | `translategemma:12b` | Ollama model. It is downloaded on the first start. |
+| `model` | `translategemma:12b` | Ollama model, chosen in the window (`translategemma:12b` or `translategemma:4b`). Another Ollama model can be written here; that is untested. A missing model is downloaded on Start. |
 | `ollama_url` | `http://127.0.0.1:11434` | Ollama server. It can run on another PC. |
 | `ocr_on_gpu` | `true` | Read text on the graphics card. `false` uses the processor. |
 | `ocr_threads` | `8` | Processor threads for reading text when the graphics card is not used. |
@@ -243,7 +250,9 @@ creation of the overlay source, silent install and uninstall, the download of th
 the game source, the start on opening, showing and hiding with the key, and, with a test picture in a running OBS, two
 translation sources with an area drawn in another place, hiding one source, adding and removing a source in the look
 editor and moving an area's place in *Areas to read*. The windows were checked in dark and light mode on a 4K display at
-125 %.
+125 %. Version 0.7.0: the program in English and Slovak with switching while it translates, the choice of the model with
+the previous model unloaded, every window made bigger and smaller, and the proportions of a moved area while drawing it
+and in OBS.
 
 Tested only in part:
 

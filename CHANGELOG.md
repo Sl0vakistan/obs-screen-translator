@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 - 2026-11-20
+
+- **In Slovak**: the whole program is also in Slovak, including the guide, the details and the list of changes. The button
+  next to *Help* switches between English and Slovak at once; until you choose, the program follows the language of
+  Windows. Stored as `ui_language`.
+- **Model in the window**: *Translation* → *Model* chooses between TranslateGemma 12b (best, about 7.5 GB of graphics
+  memory) and 4b (weaker, about 2.7 GB). The line below shows the graphics card of the PC and its memory. A model that is
+  not on the PC yet is downloaded on the next Start, and the model used before is unloaded from the graphics card.
+- **Every window can be resized**. In *Areas to read* the picture follows the size of the window and keeps the
+  proportions of the OBS source; it is taken from OBS at 1920 pixels wide, so it stays sharp in a big window.
+- **The place of a moved area keeps its proportions**: while you drag it, the blue rectangle keeps the shape of its yellow
+  area, so the translation is never squeezed or stretched. A place drawn with 0.6.0 in other proportions is filled as far
+  as the translation fits, centred.
+
 ## 0.6.0 - 2026-11-20
 
 - **Areas shown somewhere else**: an area can be read in one place and its translation drawn in another (*Areas to read*

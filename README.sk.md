@@ -40,37 +40,43 @@ informácie > Spustiť aj tak*. Ak nepodpísaný inštalátor spúšťať nechce
 ## Použitie
 
 1. Spustite OBS a *OBS Screen Translator* z ponuky Štart, v ľubovoľnom poradí. Program na OBS počká.
-2. Skontrolujte jazyky v **Translate from** (z akého) a **Translate to** (do akého). Cieľový jazyk je na začiatku jazyk
-   vášho Windows.
-3. Skontrolujte **Source in OBS** v časti *Game* (zdroj s hrou). Ak je v scéne, ktorá ide do vysielania, práve jedna zachytávacia karta, vyberie sa
-   sama; rovnako jediné zachytenie hry, okna alebo obrazovky. Inak vyberte hru zo zoznamu. *Refresh* načíta zoznam zdrojov
-   z OBS znova.
-4. Voliteľne **Areas to read** (oblasti na čítanie). *Choose...* ukáže aktuálny obraz hry; myšou potiahnite obdĺžnik
-   okolo každej časti, ktorú chcete prekladať, napríklad okolo titulkov a telefónu. Obdĺžnikov môže byť viac. Text mimo
-   nich sa ignoruje. *Remove last* odoberie posledný, *Remove all* všetky; bez obdĺžnika sa číta celý obraz. Preklad sa
-   kreslí cez pôvodný text, ak mu nedáte iné miesto: zvoľte *Draw where area [číslo] is shown* a potiahnite miesto (modré,
-   so šípkou od oblasti). Preklad sa tam presunie a prispôsobí sa jeho veľkosti. *Show it where it is read* to vráti.
-   *Use* výber potvrdí.
-5. Voliteľne **Look** (vzhľad) → *Edit...* otvorí *Look of translations* (vzhľad prekladov): písmo, veľkosť (ako pôvodný text alebo pevná),
-   tučné, kurzíva, farba textu, farba a krytie pozadia, obrys a zarovnanie. *Settings for* určuje, či meníte predvolený
+2. Skontrolujte jazyky v **Prekladať z** a **Prekladať do** v časti *Preklad*. Cieľový jazyk je na začiatku jazyk vášho
+   Windows. **Model** vyberá medzi TranslateGemma 12b (najlepšie preklady, asi 7,5 GB pamäte grafiky) a 4b (slabšie, asi
+   2,7 GB); riadok pod ním ukazuje grafickú kartu vášho počítača a jej pamäť.
+3. Skontrolujte **Zdroj v OBS** v časti *Hra*. Ak je v scéne, ktorá ide do vysielania, práve jedna zachytávacia karta,
+   vyberie sa sama; rovnako jediné zachytenie hry, okna alebo obrazovky. Inak vyberte hru zo zoznamu. *Obnoviť* načíta
+   zoznam zdrojov z OBS znova.
+4. Voliteľne **Oblasti na čítanie**. *Vybrať...* ukáže aktuálny obraz hry; myšou potiahnite obdĺžnik okolo každej časti,
+   ktorú chcete prekladať, napríklad okolo titulkov a telefónu. Obdĺžnikov môže byť viac. Text mimo nich sa ignoruje.
+   *Odobrať poslednú* a *Odobrať všetky* obdĺžniky odoberú; bez obdĺžnika sa číta celý obraz. Preklad sa kreslí cez
+   pôvodný text, ak mu nedáte iné miesto: zvoľte *Kresliť, kde sa oblasť [číslo] ukáže* a potiahnite miesto (modré, so
+   šípkou od oblasti). Miesto drží pomer strán svojej oblasti, takže preklad sa tam presunie a zväčší či zmenší bez
+   zdeformovania. *Ukázať tam, kde sa číta* to vráti. *Použiť* výber potvrdí.
+5. Voliteľne **Vzhľad** → *Upraviť...* otvorí *Vzhľad prekladov*: písmo, veľkosť (ako pôvodný text alebo pevná), tučné,
+   kurzíva, farba textu, farba a krytie pozadia, obrys a zarovnanie. *Nastavenie pre* určuje, či meníte predvolený
    vzhľad, ktorý používajú všetky oblasti, alebo vzhľad jednej oblasti; oblasť môže ostať pri predvolenom vzhľade alebo
    dostať vlastný. Zmeny platia hneď a kým je editor otvorený, OBS ukazuje vzorový preklad s upravovaným vzhľadom.
-   **Shown in OBS source** pošle preklady oblasti do iného zdroja prehliadača: *New source...* ho pridá do OBS, *Remove
-   source* ho z OBS zas odstráni a jeho oblasti vráti do prvého zdroja. Každý zdroj sa dá v OBS samostatne umiestniť,
-   orezať, dať mu filtre a zobraziť či skryť, napríklad titulky vo všetkých scénach a telefón len v niektorých.
-6. Voliteľne **Show/hide key** (klávesa na zobrazenie a skrytie). Stlačte *Set...* a potom funkčnú klávesu (F1 až F24)
-   alebo kombináciu s Ctrl či Alt. Tá klávesa preklady zobrazí a skryje, nech je v popredí ktorékoľvek okno, aj keď ju
-   pošle Stream Deck.
-7. Stlačte **Start**. Keď zaškrtnete **Start translating when this program opens**, nabudúce to program spraví za vás.
+   **Ukazuje sa v zdroji OBS** pošle preklady oblasti do iného zdroja prehliadača: *Nový zdroj...* ho pridá do OBS,
+   *Odstrániť zdroj* ho z OBS zas odstráni a jeho oblasti vráti do prvého zdroja. Každý zdroj sa dá v OBS samostatne
+   umiestniť, orezať, dať mu filtre a zobraziť či skryť, napríklad titulky vo všetkých scénach a telefón len v niektorých.
+6. Voliteľne **Kláves zobraziť/skryť**. Stlačte *Nastaviť...* a potom funkčný kláves (F1 až F24) alebo kombináciu s Ctrl
+   či Alt. Ten kláves preklady zobrazí a skryje, nech je v popredí ktorékoľvek okno, aj keď ho pošle Stream Deck.
+7. Stlačte **Spustiť**. Keď zapnete **Spustiť preklad hneď po otvorení programu**, nabudúce to program spraví za vás.
+
+Tlačidlo vedľa **Pomocníka** prepína program medzi slovenčinou a angličtinou; kým si nevyberiete, riadi sa jazykom
+Windows. Každé okno sa dá zväčšiť aj zmenšiť; v *Oblastiach na čítanie* sa obraz prispôsobí oknu a drží pomer strán
+zdroja v OBS.
 
 Pri prvom spustení program do scény, ktorá práve ide do vysielania, pridá zdroj prehliadača *Translation overlay*.
-Zdroje pridané cez *New source...* vzniknú rovnako, keď sa preklad spustí alebo reštartuje.
+Zdroje pridané cez *Nový zdroj...* vzniknú rovnako, keď sa preklad spustí alebo reštartuje.
 
-Pod tlačidlom **Help** vpravo hore je krátky návod (*Installation and setup*, po anglicky), zmeny nainštalovanej verzie (*What's new in <verzia>*), *Details* s verziou, licenciou a miestom
-nastavení a uložených prekladov, *Open the settings folder* (otvorí zložku s nastaveniami) a odkaz na tento projekt. Okno vypisuje každý preložený text a čas, ktorý to trvalo.
+V ponuke **Pomocník** vpravo hore je krátky návod (*Inštalácia a nastavenie*), zmeny nainštalovanej verzie (*Novinky vo
+verzii <verzia>*), *Podrobnosti* s verziou, licenciou a miestom nastavení a uložených prekladov, *Otvoriť priečinok
+s nastaveniami* a *Stránka projektu*. Okno vypisuje každý preložený text a čas, ktorý to trvalo.
 
-Jazyk zmeníte výberom iného v okne. Preklad sa v novom jazyku spustí sám, netreba ho predtým zastavovať. Každý jazyk má
-vlastné uložené preklady. Rovnako sa počas prekladu dajú zmeniť oblasti.
+Jazyk alebo model zmeníte výberom iného v okne. Preklad sa spustí znova sám, netreba ho predtým zastavovať. Každý jazyk
+aj model má vlastné uložené preklady. Model, ktorý na počítači ešte nie je, sa najprv stiahne a doterajší sa uvoľní
+z grafickej karty. Rovnako sa počas prekladu dajú zmeniť oblasti.
 
 Menšie oblasti znamenajú menej čítania a menej prekladania a žiadne preklady cez časti obrazu, ktoré vás nezaujímajú.
 Najviac pomôžu na obrazovkách plných textu; pozri *Namerané*.
@@ -88,8 +94,9 @@ drží model načítaný aj medzi prekladmi.
 [Ollama](https://ollama.com/) je bezplatný program, v ktorom na vašom počítači beží prekladový model. Prekladač jej posiela
 text na preklad; nič neodchádza z počítača.
 
-- Ollamu netreba spúšťať a do terminálu netreba nič písať. Po stlačení **Start** ju program spustí na pozadí, ak nebeží,
-  a stiahne model, ak chýba (8,1 GB; okno ukazuje percentá). Keď môže prekladať, napíše *translation model ready*.
+- Ollamu netreba spúšťať a do terminálu netreba nič písať. Po stlačení **Spustiť** ju program spustí na pozadí, ak
+  nebeží, a stiahne model, ak chýba (8,1 GB; okno ukazuje percentá). Keď môže prekladať, napíše *prekladový model je
+  pripravený*.
 - Po inštalácii Ollama otvorí vlastné okno *Launch* s vetou „Copy a command and run it in your terminal" a príkazmi ako
   `ollama launch claude`. Tie spúšťajú AI nástroje na programovanie a s prekladačom nesúvisia: okno zavrite, Ollama beží
   ďalej na pozadí.
@@ -97,19 +104,19 @@ text na preklad; nič neodchádza z počítača.
   aktuálneho používateľa, bez práv správcu, a nepotrebuje účet.
 - Beží? Adresa <http://127.0.0.1:11434> v prehliadači ukáže *Ollama is running*. `ollama list` v príkazovom riadku vypíše
   stiahnuté modely.
-- Model sa dá stiahnuť pred streamom: raz stlačte **Start** a počkajte na *translation model ready*, alebo v príkazovom
-  riadku spustite `ollama pull translategemma:12b`.
-- Pri menej než asi 8 GB voľnej pamäte grafiky použite menší model, ktorý prekladá citeľne horšie: v `settings.json`
-  (*Help > Open the settings folder*) nastavte `"model": "translategemma:4b"` (3,3 GB, asi 2,7 GB pamäte grafiky)
-  a program spustite znova.
+- Model sa dá stiahnuť pred streamom: raz stlačte **Spustiť** a počkajte na *prekladový model je pripravený*, alebo
+  v príkazovom riadku spustite `ollama pull translategemma:12b`.
+- Pri menej než asi 8 GB voľnej pamäte grafiky vyberte v *Preklad* → *Model* TranslateGemma 4b (3,3 GB, asi 2,7 GB
+  pamäte grafiky). Prekladá citeľne horšie a stiahne sa pri ďalšom stlačení **Spustiť**.
 - Ollama drží modely v `%USERPROFILE%\.ollama\models`. Inam ich presmeruje *Model location* v nastaveniach Ollamy (Ollamu
   otvorte z ponuky Štart) alebo premenná prostredia `OLLAMA_MODELS`, najlepšie ešte pred stiahnutím modelu.
 - Ollama na inom počítači: tam v nastaveniach Ollamy zapnite *Expose Ollama to the network* (alebo nastavte
-  `OLLAMA_HOST=0.0.0.0`) a povoľte ju vo firewalle Windows; tu nastavte v `settings.json` `ollama_url` na
+  `OLLAMA_HOST=0.0.0.0`) a povoľte ju vo firewalle Windows; tu nastavte v `settings.json` (*Pomocník* → *Otvoriť
+  priečinok s nastaveniami*) `ollama_url` na
   `http://<adresa toho počítača>:11434`. Každý preklad potom ide cez Ollamu a trvá asi o tretinu sekundy dlhšie, lebo
   priame spojenie s modelom funguje len na tom istom počítači.
-- *Ollama did not start*: spustite Ollamu z ponuky Štart, počkajte na jej ikonu pri hodinách a stlačte **Start** znova.
-- Prerušené sťahovanie modelu pokračuje tam, kde skončilo, keď znova stlačíte **Start**.
+- *Ollama sa nespustila*: spustite Ollamu z ponuky Štart, počkajte na jej ikonu pri hodinách a znova stlačte **Spustiť**.
+- Prerušené sťahovanie modelu pokračuje tam, kde skončilo, keď znova stlačíte **Spustiť**.
 
 ## Ako to pracuje
 
@@ -151,14 +158,16 @@ správne, nech vyberiete akýkoľvek jazyk.
 
 ## Nastavenia
 
-Jazyky, zdroj s hrou, oblasti na čítanie a miesto, kde sa ukazujú, vzhľad prekladov a zdroje OBS, do ktorých idú, klávesa na zobrazenie a skrytie a automatický štart sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
+Jazyky, model, zdroj s hrou, oblasti na čítanie a miesto, kde sa ukazujú, vzhľad prekladov a zdroje OBS, do ktorých idú,
+kláves zobraziť/skryť, automatický štart a jazyk programu sa nastavujú v okne. Všetko ostatné je v súbore `settings.json`, ktorý vznikne pri prvom spustení
 v `%APPDATA%\OBS Screen Translator` (pri spustení zo zdrojového kódu vedľa `translator.py`). Zmeny platia po novom spustení
 programu. Tabuľka všetkých položiek je v [README.md](README.md#settings). Najdôležitejšie:
 
 - `context` – jedna alebo dve anglické vety, ktoré modelu povedia, aký text dostáva a ako má čitateľa oslovovať. Pri
   preklade dialógov do slovenčiny pomôže dopísať: `Dialogue is colloquial and informal: address a single person as 'ty',
   never the formal 'vy'.`
-- `model` – `translategemma:12b` alebo `translategemma:4b`; `ollama_url` môže ukazovať aj na iný počítač.
+- `model` – vyberá sa v okne; sem sa dá zapísať aj iný model z Ollamy, to sa však neskúšalo. `ollama_url` môže ukazovať
+  aj na iný počítač.
 - `ocr_on_gpu` – `false` presunie čítanie textu na procesor.
 
 ## Spustenie zo zdrojového kódu a zostavenie
@@ -196,8 +205,10 @@ Skúšalo sa: štart a zastavenie z okna, zmena cieľového jazyka počas prekla
 na celý obraz počas prekladu, zostavený aj nainštalovaný program proti bežiacemu OBS, vytvorenie zdroja prekladu, tichá inštalácia
 a odinštalovanie, stiahnutie prekladového modelu, automatický výber zdroja s hrou, štart po otvorení programu, zobrazenie
 a skrytie klávesou a so skúšobným obrázkom v bežiacom OBS dva zdroje prekladu s oblasťou nakreslenou na inom mieste,
-skrytie jedného zdroja, pridanie a odstránenie zdroja v editore vzhľadu a presunutie miesta oblasti v *Areas to read*.
-Okná sa kontrolovali v tmavom aj svetlom režime na displeji 4K so zväčšením 125 %.
+skrytie jedného zdroja, pridanie a odstránenie zdroja v editore vzhľadu a presunutie miesta oblasti v *Oblastiach na čítanie*.
+Okná sa kontrolovali v tmavom aj svetlom režime na displeji 4K so zväčšením 125 %. Verzia 0.7.0: program po anglicky aj
+po slovensky s prepnutím počas prekladu, výber modelu s uvoľnením predošlého, zväčšenie aj zmenšenie každého okna a pomer
+strán presunutej oblasti pri kreslení aj v OBS.
 
 Skúšalo sa len sčasti:
 
@@ -213,7 +224,7 @@ než 33 a celé živé vysielanie. Oblasti v skúškach kreslil skript, ktorý s
 
 ## Hranice
 
-- Pôvodný text presvitá cez polopriehľadné pozadie. Krytie pozadia 100 % v *Look of translations* dá plné pozadie.
+- Pôvodný text presvitá cez polopriehľadné pozadie. Krytie pozadia 100 % vo *Vzhľade prekladov* dá plné pozadie.
 - Preklad je taký dobrý, aký je lokálny model. Slang občas netrafí a názov značky, ktorý vyzerá ako slovo, vie preložiť
   nezmyslom.
 - Preklad dlhší než originál sa zmenší najviac na 70 % pôvodnej veľkosti a potom presiahne cez susedov.
