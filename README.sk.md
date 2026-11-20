@@ -41,7 +41,7 @@ Zvyšok si program nastaví sám pri prvom spustení, pri každom kroku sa najpr
 - Ak chýba [Ollama](https://ollama.com/), v ktorej beží prekladový model, program ponúkne, že ju stiahne z ollama.com
   (1,9 GB) a nainštaluje. Stiahnutý inštalátor spustí len vtedy, keď má podpis Ollamy. Ollama po inštalácii otvorí
   vlastné okno s príkazmi do terminálu; prekladač ich nepotrebuje, pozri [Ollama](#ollama).
-- Prekladový model (8,1 GB) sa stiahne raz.
+- Prekladový model sa stiahne raz: 8,1 GB pri odporúčanom TranslateGemma 12b, 3,3 GB pri 4b, 17,4 GB pri 27b.
 
 Prvé dve veci môžete spraviť aj ručne: v OBS *Nástroje > Nastavenia servera WebSocket > Povoliť server WebSocket*
 a inštalátor z [ollama.com/download](https://ollama.com/download).

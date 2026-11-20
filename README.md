@@ -43,7 +43,7 @@ The rest is set up by the program on the first start, each step after asking you
   ollama.com (1.9 GB) and install it. The downloaded installer is run only if it carries Ollama's signature. After its
   installation Ollama opens a window of its own with commands for a terminal; the translator does not need them, see
   [Ollama](#ollama).
-- The translation model (8.1 GB) is downloaded once.
+- The translation model is downloaded once: 8.1 GB for the recommended TranslateGemma 12b, 3.3 GB for 4b, 17.4 GB for 27b.
 
 You can do the first two by hand instead: *Tools > WebSocket Server Settings > Enable WebSocket server* in OBS, and the
 installer from [ollama.com/download](https://ollama.com/download).
